@@ -23,7 +23,7 @@ def request_handler(sock: socket.socket) -> None:
     for _ in range(response_count):
         sock.send(response_value.deserialize())
 
-    sock.close()
+    # sock.close()
 
 
 if __name__ == "__main__":

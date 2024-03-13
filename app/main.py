@@ -1,7 +1,7 @@
 import socket
 import threading
 
-from .redis_command import RedisValue, RedisSimpleString
+from .redis_value import RedisValue, RedisSimpleString
 
 
 def main():

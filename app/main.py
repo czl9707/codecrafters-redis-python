@@ -13,17 +13,16 @@ def main():
 
 
 def request_handler(sock: socket.socket) -> None:
-    request_bytes = sock.recv(1024)
+    while True:
+        request_bytes = sock.recv(1024)
 
-    request_value = RedisValue.from_bytes(request_bytes)
-    response_count = len(request_value.value[0].value.split("\n"))
+        request_value = RedisValue.from_bytes(request_bytes)
+        response_count = len(request_value.value[0].value.split("\n"))
 
-    response_value = RedisSimpleString("PONG")
+        response_value = RedisSimpleString("PONG")
 
-    for _ in range(response_count):
-        sock.send(response_value.deserialize())
-
-    # sock.close()
+        for _ in range(response_count):
+            sock.send(response_value.deserialize())
 
 
 if __name__ == "__main__":

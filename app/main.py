@@ -1,15 +1,25 @@
-# Uncomment this to pass the first stage
 import socket
+import threading
+
+from .redis_command import RedisValue, RedisSimpleString
 
 
 def main():
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
-    print("Logs from your program will appear here!")
-
-    # Uncomment this to pass the first stage
-    #
     server_socket = socket.create_server(("localhost", 6379), reuse_port=True)
-    server_socket.accept()  # wait for client
+    while True:
+        sock, ret_addr = server_socket.accept()
+        t = threading.Thread(target=lambda: request_handler(sock))
+        t.start()
+
+
+def request_handler(sock: socket.socket) -> None:
+    request_bytes = sock.recv(1024)
+
+    request_value = RedisValue.from_bytes(request_bytes)
+    response_value = RedisSimpleString("PONG")
+    sock.send(response_value.deserialize())
+
+    sock.close()
 
 
 if __name__ == "__main__":

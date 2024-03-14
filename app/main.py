@@ -2,6 +2,7 @@ import socket
 import threading
 
 from .redis_value import RedisValue, RedisSimpleString
+from .redis_command import RedisCommand
 
 
 def main():
@@ -15,10 +16,16 @@ def main():
 def request_handler(sock: socket.socket) -> None:
     while True:
         request_bytes = sock.recv(1024)
-        print(request_bytes)
-        request_value = RedisValue.from_bytes(request_bytes)
+        if not request_bytes:
+            continue
 
-        response_value = RedisSimpleString("PONG")
+        try:
+            request_value = RedisValue.from_bytes(request_bytes)
+            command = RedisCommand.from_redis_value(request_value)
+        except:
+            continue
+
+        response_value = command.execute()
 
         sock.send(response_value.deserialize())
 

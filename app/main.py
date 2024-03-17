@@ -1,12 +1,17 @@
 import socket
 import threading
+import argparse
 
 from .redis_value import RedisValue
 from .redis_command import RedisCommand
 
 
 def main():
-    server_socket = socket.create_server(("localhost", 6379), reuse_port=True)
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--port", dest="port", default=6379, type=int)
+    args = arg_parser.parse_args()
+
+    server_socket = socket.create_server(("localhost", args.port), reuse_port=True)
     while True:
         sock, ret_addr = server_socket.accept()
         t = threading.Thread(target=lambda: request_handler(sock))

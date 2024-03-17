@@ -19,6 +19,7 @@ def main():
     cache = RedisCache()
     if args.replica_of:
         cache.config(False, args.replica_of[0], int(args.replica_of[1]))
+    cache.boot()
 
     server_socket = socket.create_server(("localhost", args.port), reuse_port=True)
     while True:

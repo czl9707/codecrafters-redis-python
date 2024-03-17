@@ -21,16 +21,23 @@ class RedisCache:
 
     CACHE: Dict[RedisBulkStrings, RedisEntry]
     is_master: bool
+    booted: bool
     master_url: Optional[str]
     master_port: Optional[int]
+    master_replid: Optional[str]
+    master_repl_offset: Optional[int]
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(RedisCache, cls).__new__(cls)
-            cls._instance.CACHE = {}
-            cls._instance.is_master = True
-            cls._instance.master_url = None
-            cls._instance.master_port = None
+            instance = super(RedisCache, cls).__new__(cls)
+            instance.is_master = True
+            instance.booted = False
+            instance.master_url = None
+            instance.master_port = None
+            instance.master_replid = None
+            instance.master_repl_offset = None
+
+            cls._instance = instance
         return cls._instance
 
     def config(
@@ -39,10 +46,25 @@ class RedisCache:
         master_url: Optional[str] = None,
         master_port: Optional[int] = None,
     ):
+        if self.booted:
+            raise Exception("RedisCache can only be configed before boot.")
+
         self.is_master = is_master
         self.master_url = master_url
         self.master_port = master_port
 
+    def boot(self) -> None:
+        if self.booted:
+            raise Exception("RedisCache can only be booted once.")
+        self.booted = True
+
+        if self.is_master:
+            self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+            self.master_repl_offset = 0
+
+        self.CACHE = {}
+
+    # cache operation
     def get(self, key: RedisBulkStrings) -> RedisBulkStrings:
         self.validate_entry(key)
         return self.CACHE[key].value

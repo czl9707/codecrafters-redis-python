@@ -123,7 +123,7 @@ class GetCommand(RedisCommand):
             return RedisValue.from_value(None)
 
 
-class GetCommand(RedisCommand):
+class InfoCommand(RedisCommand):
     name = "info"
 
     def __init__(self, arg: RedisBulkStrings) -> None:
@@ -133,6 +133,10 @@ class GetCommand(RedisCommand):
         if self.arg.serialize().lower() == "replication":
             pairs = {}
             pairs["role"] = "master" if cache.is_master else "slave"
+            if cache.is_master:
+                pairs["master_replid"] = cache.master_replid
+                pairs["master_repl_offset"] = cache.master_repl_offset
+
             return RedisValue.from_value(
                 "\r\n".join(f"{key}:{value}" for key, value in pairs.items())
             )

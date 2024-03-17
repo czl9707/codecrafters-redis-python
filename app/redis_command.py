@@ -123,3 +123,20 @@ class GetCommand(RedisCommand):
             return RedisCache.get(self.key)
         except KeyError:
             return RedisValue.from_value(None)
+
+
+class GetCommand(RedisCommand):
+    name = "info"
+
+    def __init__(self, arg: RedisBulkStrings) -> None:
+        self.arg = arg
+
+    def execute(self) -> RedisValue:
+        if self.arg.serialize().lower() == "replication":
+            pairs = {}
+            pairs["role"] = "master"
+            return RedisValue.from_value(
+                "\r\n".join(f"{key}:{value}" for key, value in pairs.items())
+            )
+        else:
+            return RedisValue.from_value(None)

@@ -32,7 +32,7 @@ def request_handler(sock: socket.socket) -> None:
             continue
 
         response_value = command.execute()
-
+        print(response_value.deserialize())
         sock.send(response_value.deserialize())
 
 

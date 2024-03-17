@@ -21,6 +21,8 @@ def request_handler(sock: socket.socket) -> None:
 
         try:
             request_value = RedisValue.from_bytes(request_bytes)
+            print(request_value.deserialize())
+            print(request_value)
             command = RedisCommand.from_redis_value(request_value)
         except:
             continue

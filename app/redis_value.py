@@ -11,7 +11,7 @@ class RedisValue(ABC, Generic[TBase]):
     _symbol2value: Dict[str, Type["RedisValue"]] = {}
     _type2value: Dict[type, Type["RedisValue"]] = {}
     symbol: bytes
-    value_type: Type[TBase]
+    value_types: List[type] = []
 
     bytes_value: Optional[bytes]
     value: Optional[TBase]
@@ -33,8 +33,8 @@ class RedisValue(ABC, Generic[TBase]):
 
     def __init_subclass__(cls: Type["RedisValue"]) -> None:
         RedisValue._symbol2value[cls.symbol] = cls
-        if hasattr(cls, "value_type"):
-            RedisValue._type2value[cls.value_type] = cls
+        for t in cls.value_types:
+            RedisValue._type2value[t] = cls
 
     @staticmethod
     def _from_symbol(sym: bytes) -> "RedisValue":
@@ -121,7 +121,7 @@ class RedisSimpleString(RedisValue[str]):
 
 class RedisBulkStrings(RedisValue[Optional[str]]):
     symbol = b"$"
-    value_type = str
+    value_types = [str, None.__class__]
 
     _null: "RedisBulkStrings" = None
 
@@ -177,17 +177,10 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
                 ]
             )
 
-    @staticmethod
-    def NULL() -> "RedisBulkStrings":
-        if RedisBulkStrings._null is None:
-            RedisBulkStrings._null = RedisBulkStrings()
-            RedisBulkStrings._null.value = None
-        return RedisBulkStrings._null
-
 
 class RedisArray(RedisValue[List[RedisValue]]):
     symbol = b"*"
-    value_type = list
+    value_types = [list]
 
     @classmethod
     def _serialize(

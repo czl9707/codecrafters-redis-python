@@ -1,13 +1,17 @@
-from typing import Dict, List, Type
+from typing import Dict, List, Tuple, Type, Any
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 
 from .redis_value import (
     RedisValue,
     RedisArray,
     RedisBulkStrings,
 )
+from .redis_cache import RedisCache
 
-CACHE = {}
+#     CACHE,
+#     EXPIRE,
+# )
 
 
 class RedisCommand(ABC):
@@ -23,13 +27,18 @@ class RedisCommand(ABC):
 
         it = (v for v in redis_value.serialize())
 
-        name: str = next(it).serialize()
-        args: List[str] = list(it)
-        print(args)
-        return RedisCommand._name2command[name](*args)
+        name: str = next(it).serialize().lower()
+        CommandType = RedisCommand._name2command[name]
+
+        args, kwargs = CommandType.parse_args(list(it))
+        return CommandType(*args, **kwargs)
 
     @abstractmethod
     def execute(self) -> RedisValue: ...
+
+    @staticmethod
+    def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
+        return args, {}
 
     def __init_subclass__(cls) -> None:
         RedisCommand._name2command[cls.name] = cls
@@ -58,13 +67,48 @@ class EchoCommand(RedisCommand):
 class SetCommand(RedisCommand):
     name = "set"
 
-    def __init__(self, key: RedisBulkStrings, value: RedisBulkStrings) -> None:
+    @staticmethod
+    def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
+        parsed_args = []
+        parsed_kwargs = {}
+        it = iter(args)
+        parsed_args.append(next(it))  # key
+        parsed_args.append(next(it))  # value
+
+        for arg in it:
+            match arg.serialize().lower():
+                case "px":
+                    expire_ms = int(next(it).serialize())
+                    parsed_kwargs["expiration"] = expire_ms
+                case "p":
+                    expire_s = int(next(it).serialize())
+                    parsed_kwargs["expiration"] = expire_s * 1000
+                case _:
+                    pass
+
+        return parsed_args, parsed_kwargs
+
+    def __init__(
+        self,
+        key: RedisBulkStrings,
+        value: RedisBulkStrings,
+        expiration: int = -1,
+    ) -> None:
         self.key = key
         self.value = value
+        self.expiration = expiration
 
     def execute(self) -> RedisValue:
-        global CACHE
-        CACHE[self.key] = self.value
+        RedisCache.set(
+            self.key,
+            self.value,
+            (
+                None
+                if self.expiration <= 0
+                else datetime.now() + timedelta(milliseconds=self.expiration)
+            ),
+        )
+
         return RedisValue.from_value("OK")
 
 
@@ -75,7 +119,7 @@ class GetCommand(RedisCommand):
         self.key = key
 
     def execute(self) -> RedisValue:
-        global CACHE
-        if self.key not in CACHE:
-            return RedisBulkStrings.NULL()
-        return CACHE[self.key]
+        try:
+            return RedisCache.get(self.key)
+        except KeyError:
+            return RedisValue.from_value(None)

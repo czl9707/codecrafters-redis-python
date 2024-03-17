@@ -1,7 +1,6 @@
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, final
+from abc import ABC
+from typing import Dict, List, Optional, Tuple, final
 from datetime import datetime
-from time import sleep
 
 from .redis_value import RedisBulkStrings, RedisValue
 
@@ -18,37 +17,60 @@ class RedisEntry:
 
 @final
 class RedisCache:
-    CACHE: Dict[RedisBulkStrings, RedisEntry] = {}
+    _instance: Optional["RedisCache"] = None
 
-    @staticmethod
-    def get(key: RedisBulkStrings) -> RedisBulkStrings:
-        RedisCache.validate_entry(key)
-        return RedisCache.CACHE[key].value
+    CACHE: Dict[RedisBulkStrings, RedisEntry]
+    is_master: bool
+    master_url: Optional[str]
+    master_port: Optional[int]
 
-    @staticmethod
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(RedisCache, cls).__new__(cls)
+            cls._instance.CACHE = {}
+            cls._instance.is_master = True
+            cls._instance.master_url = None
+            cls._instance.master_port = None
+        return cls._instance
+
+    def config(
+        self,
+        is_master: bool,
+        master_url: Optional[str] = None,
+        master_port: Optional[int] = None,
+    ):
+        self.is_master = is_master
+        self.master_url = master_url
+        self.master_port = master_port
+
+    def get(self, key: RedisBulkStrings) -> RedisBulkStrings:
+        self.validate_entry(key)
+        return self.CACHE[key].value
+
     def set(
-        key: RedisBulkStrings, value: RedisValue, expiration: Optional[datetime] = None
+        self,
+        key: RedisBulkStrings,
+        value: RedisValue,
+        expiration: Optional[datetime] = None,
     ) -> None:
-        RedisCache.CACHE[key] = RedisEntry(
+        self.CACHE[key] = RedisEntry(
             value=value,
             expiration=expiration,
         )
 
-    @staticmethod
-    def validate_entry(key: RedisBulkStrings) -> None:
-        entry = RedisCache.CACHE[key]
+    def validate_entry(self, key: RedisBulkStrings) -> None:
+        entry = self.CACHE[key]
         if ExpirationPolicy.is_expired(entry):
-            RedisCache.CACHE.pop(key)
+            self.CACHE.pop(key)
 
-    @staticmethod
-    def validate_all_entries():
+    def validate_all_entries(self):
         expired = []
-        for key, entry in RedisCache.CACHE.items():
+        for key, entry in self.CACHE.items():
             if ExpirationPolicy.is_expired(entry):
                 expired.append(key)
 
         for key in expired:
-            RedisCache.CACHE.pop(key)
+            self.CACHE.pop(key)
 
 
 class ExpirationPolicy(ABC):

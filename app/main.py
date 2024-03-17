@@ -2,6 +2,7 @@ import socket
 import threading
 import argparse
 
+from .redis_cache import RedisCache
 from .redis_value import RedisValue
 from .redis_command import RedisCommand
 
@@ -9,7 +10,15 @@ from .redis_command import RedisCommand
 def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--port", dest="port", default=6379, type=int)
+    arg_parser.add_argument("--replicaof", dest="replica_of", default=[], nargs="*")
     args = arg_parser.parse_args()
+
+    if len(args.replica_of) not in (0, 2):
+        raise Exception("replica of should either have 2 arguments or not been given")
+
+    cache = RedisCache()
+    if args.replica_of:
+        cache.config(False, args.replica_of[0], int(args.replica_of[1]))
 
     server_socket = socket.create_server(("localhost", args.port), reuse_port=True)
     while True:

@@ -9,9 +9,7 @@ from .redis_value import (
 )
 from .redis_cache import RedisCache
 
-#     CACHE,
-#     EXPIRE,
-# )
+cache = RedisCache()
 
 
 class RedisCommand(ABC):
@@ -99,7 +97,7 @@ class SetCommand(RedisCommand):
         self.expiration = expiration
 
     def execute(self) -> RedisValue:
-        RedisCache.set(
+        cache.set(
             self.key,
             self.value,
             (
@@ -120,7 +118,7 @@ class GetCommand(RedisCommand):
 
     def execute(self) -> RedisValue:
         try:
-            return RedisCache.get(self.key)
+            return cache.get(self.key)
         except KeyError:
             return RedisValue.from_value(None)
 
@@ -134,7 +132,7 @@ class GetCommand(RedisCommand):
     def execute(self) -> RedisValue:
         if self.arg.serialize().lower() == "replication":
             pairs = {}
-            pairs["role"] = "master"
+            pairs["role"] = "master" if cache.is_master else "slave"
             return RedisValue.from_value(
                 "\r\n".join(f"{key}:{value}" for key, value in pairs.items())
             )

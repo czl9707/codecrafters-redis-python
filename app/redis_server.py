@@ -37,9 +37,9 @@ class RedisServer:
             except:
                 continue
 
-            response_value = command.execute(self)
-            # print(f"response: {response_value}")
-            sock.send(response_value.deserialize())
+            for response_value in command.execute(self):
+                # print(f"response: {response_value}")
+                sock.send(response_value.deserialize())
 
     # cache operation
     def get(self, key: RedisBulkStrings) -> RedisBulkStrings:

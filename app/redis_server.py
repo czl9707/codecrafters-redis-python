@@ -32,13 +32,13 @@ class RedisServer:
 
             try:
                 request_value = RedisValue.from_bytes(request_bytes)
-                print(f"request: {request_value}")
+                # print(f"request: {request_value}")
                 command = RedisCommand.from_redis_value(request_value)
             except:
                 continue
 
             response_value = command.execute(self)
-            print(f"response: {response_value}")
+            # print(f"response: {response_value}")
             sock.send(response_value.deserialize())
 
     # cache operation

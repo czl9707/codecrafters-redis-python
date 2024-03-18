@@ -34,26 +34,61 @@ class RedisCache:
 
     def boot(self, server_address: Address) -> None:
         if self.is_master:
-            self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
-            self.master_repl_offset = 0
+            self.boot_master(server_address)
+        else:
+            self.boot_replica(server_address)
+
+    def boot_master(self, server_address: Address) -> None:
+        self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+        self.master_repl_offset = 0
 
         self.CACHE = {}
         server_socket = socket.create_server(server_address, reuse_port=True)
-
-        if not self.is_master:
-            master_socket = socket.create_connection(self.master_addr)
-            master_socket.send(
-                RedisValue.from_value(
-                    [
-                        RedisValue.from_value("ping"),
-                    ]
-                ).deserialize()
-            )
 
         while True:
             sock, ret_addr = server_socket.accept()
             t = threading.Thread(target=lambda: self._request_handler(sock))
             t.start()
+
+    def boot_replica(self, server_address: Address) -> None:
+        master_socket = socket.create_connection(self.master_addr)
+
+        # PING
+        master_socket.send(
+            RedisValue.from_value(
+                [
+                    RedisValue.from_value("ping"),
+                ]
+            ).deserialize()
+        )
+        response = master_socket.recv(1024)
+        if not response:
+            raise Exception("master not respond to PING request")
+
+        # REPLCONF
+        master_socket.send(
+            RedisValue.from_value(
+                [
+                    RedisValue.from_value("replconf"),
+                    RedisValue.from_value("listening-port"),
+                    RedisValue.from_value(str(server_address[1])),
+                ]
+            ).deserialize()
+        )
+        response = master_socket.recv(1024)
+        if response and RedisValue.from_bytes(response).serialize() != "OK":
+            raise Exception("master not respond to REPLCONF request with OK")
+        master_socket.send(
+            RedisValue.from_value(
+                [
+                    RedisValue.from_value("replconf"),
+                    RedisValue.from_value("capa"),
+                    RedisValue.from_value("psync2"),
+                ]
+            ).deserialize()
+        )
+        if response and RedisValue.from_bytes(response).serialize() != "OK":
+            raise Exception("master not respond to REPLCONF request with OK")
 
     def _request_handler(self, sock: socket.socket) -> None:
         while True:

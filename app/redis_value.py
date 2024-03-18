@@ -218,6 +218,7 @@ class RedisArray(RedisValue[List[RedisValue]]):
 # RDBFile is same as BulkStrings, but without CRLF at the end
 class RedisRDBFile(RedisValue[str]):
     def __init__(self, value: str) -> None:
+        super().__init__()
         self.value = value
 
     @classmethod

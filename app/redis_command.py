@@ -9,7 +9,7 @@ from .redis_value import (
 )
 
 if TYPE_CHECKING:
-    from .redis_server import RedisServer, MasterServer
+    from .redis_server import RedisServer
 
 
 class RedisCommand(ABC):
@@ -132,7 +132,7 @@ class InfoCommand(RedisCommand):
     def execute(self, server: "RedisServer") -> RedisValue:
         if self.arg.serialize().lower() == "replication":
             pairs = {}
-            if isinstance(server, MasterServer):
+            if server.is_master:
                 pairs["role"] = "master"
                 pairs["master_replid"] = server.master_replid
                 pairs["master_repl_offset"] = server.master_repl_offset

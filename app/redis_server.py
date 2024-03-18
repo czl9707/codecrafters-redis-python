@@ -20,6 +20,10 @@ class RedisServer:
     @abstractmethod
     def boot(self) -> None: ...
 
+    @property
+    @abstractmethod
+    def is_master(self) -> bool: ...
+
     def _request_handler(self, sock: socket.socket) -> None:
         while True:
             request_bytes = sock.recv(1024)
@@ -71,6 +75,10 @@ class MasterServer(RedisServer):
     def __init__(self, server_addr: Address) -> None:
         super().__init__(server_addr)
 
+    @property
+    def is_master(self) -> bool:
+        return True
+
     def boot(self) -> None:
         self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
         self.master_repl_offset = 0
@@ -86,6 +94,10 @@ class ReplicaServer(RedisServer):
     def __init__(self, server_addr: Address, master_addr: Address) -> None:
         super().__init__(server_addr)
         self.master_addr = master_addr
+
+    @property
+    def is_master(self) -> bool:
+        return False
 
     def boot(self) -> None:
         master_socket = socket.create_connection(self.master_addr)

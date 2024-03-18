@@ -2,8 +2,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Any
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
-from app.redis_server import RedisServer
-
 from .redis_value import (
     RedisSimpleString,
     RedisValue,
@@ -180,7 +178,7 @@ class ReplConfCommand(RedisCommand):
         self.listening_port = listening_port
         self.capabilities = capabilities
 
-    def execute(self, server: RedisServer) -> RedisValue:
+    def execute(self, server: "RedisServer") -> RedisValue:
         # ok = RedisSimpleString()
         # ok.value = "OK"
         # return ok

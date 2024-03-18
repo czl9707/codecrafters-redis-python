@@ -252,7 +252,7 @@ class RedisRDBFile(RedisValue[str]):
     def _deserialize(cls, value: str) -> bytes:
         return b"".join(
             [
-                cls.symbol,
+                b"$",
                 str(len(value)).encode(),
                 CRLF,
                 value.encode(),

@@ -205,6 +205,5 @@ class PsyncCommand(RedisCommand):
         server.master_repl_offset += 1
 
         yield RedisValue.from_value(f"FULLRESYNC {replication_id} {offset}")
-        file = RedisRDBFile()
-        file.value = EMPTYRDB
+        file = RedisRDBFile(EMPTYRDB)
         yield file

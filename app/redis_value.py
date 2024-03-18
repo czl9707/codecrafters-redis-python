@@ -32,7 +32,8 @@ class RedisValue(ABC, Generic[TBase]):
         return False
 
     def __init_subclass__(cls: Type["RedisValue"]) -> None:
-        RedisValue._symbol2value[cls.symbol] = cls
+        if hasattr(cls, "symbol"):
+            RedisValue._symbol2value[cls.symbol] = cls
         for t in cls.value_types:
             RedisValue._type2value[t] = cls
 
@@ -123,8 +124,6 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
     symbol = b"$"
     value_types = [str, None.__class__]
 
-    _null: "RedisBulkStrings" = None
-
     @classmethod
     def _serialize(
         cls,
@@ -212,5 +211,49 @@ class RedisArray(RedisValue[List[RedisValue]]):
                 str(len(value)).encode(),
                 CRLF,
                 *[v.deserialize() for v in value],
+            ]
+        )
+
+
+# RDBFile is same as BulkStrings, but without CRLF at the end
+class RedisRDBFile(RedisValue[str]):
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    @classmethod
+    def _serialize(
+        cls,
+        bytes_lines: Deque[bytes],
+        used_tokens: Optional[List[bytes]] = None,
+    ) -> Optional[str]:
+        l = bytes_lines.popleft()
+        if used_tokens is not None:
+            used_tokens.append(l)
+            used_tokens.append(CRLF)
+
+        size = int(l.decode()[1:])
+        total_length = 0
+        tokens = []
+        while total_length < size:
+            line = bytes_lines.popleft()
+            tokens.append(line)
+            tokens.append(CRLF)
+
+            total_length += len(line) + 2
+
+        bytes_string = b"".join(tokens)[:size]
+        if used_tokens is not None:
+            used_tokens.append(bytes_string)
+
+        return bytes_string.decode()
+
+    @classmethod
+    def _deserialize(cls, value: str) -> bytes:
+        return b"".join(
+            [
+                cls.symbol,
+                str(len(value)).encode(),
+                CRLF,
+                value.encode(),
             ]
         )

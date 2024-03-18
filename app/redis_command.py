@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
 from .redis_value import (
+    RedisRDBFile,
     RedisValue,
     RedisArray,
     RedisBulkStrings,
@@ -204,4 +205,6 @@ class PsyncCommand(RedisCommand):
         server.master_repl_offset += 1
 
         yield RedisValue.from_value(f"FULLRESYNC {replication_id} {offset}")
-        yield RedisValue.from_value(EMPTYRDB)
+        file = RedisRDBFile()
+        file.value = EMPTYRDB
+        yield file

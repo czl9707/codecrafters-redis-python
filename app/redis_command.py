@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Type, Any
+from typing import TYPE_CHECKING, Dict, List, Tuple, Type, Any
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
@@ -7,9 +7,9 @@ from .redis_value import (
     RedisArray,
     RedisBulkStrings,
 )
-from .redis_cache import RedisCache
 
-cache = RedisCache()
+if TYPE_CHECKING:
+    from .redis_cache import RedisCache
 
 
 class RedisCommand(ABC):
@@ -32,7 +32,7 @@ class RedisCommand(ABC):
         return CommandType(*args, **kwargs)
 
     @abstractmethod
-    def execute(self) -> RedisValue: ...
+    def execute(self, redis_cache: "RedisCache") -> RedisValue: ...
 
     @staticmethod
     def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
@@ -48,7 +48,7 @@ class PingCommand(RedisCommand):
     def __init__(self) -> None:
         return
 
-    def execute(self) -> RedisValue:
+    def execute(self, redis_cache: "RedisCache") -> RedisValue:
         return RedisValue.from_value("PONG")
 
 
@@ -58,7 +58,7 @@ class EchoCommand(RedisCommand):
     def __init__(self, content: RedisBulkStrings) -> None:
         self.content = content
 
-    def execute(self) -> RedisValue:
+    def execute(self, redis_cache: "RedisCache") -> RedisValue:
         return self.content
 
 
@@ -96,8 +96,8 @@ class SetCommand(RedisCommand):
         self.value = value
         self.expiration = expiration
 
-    def execute(self) -> RedisValue:
-        cache.set(
+    def execute(self, redis_cache: "RedisCache") -> RedisValue:
+        redis_cache.set(
             self.key,
             self.value,
             (
@@ -116,9 +116,9 @@ class GetCommand(RedisCommand):
     def __init__(self, key: RedisBulkStrings) -> None:
         self.key = key
 
-    def execute(self) -> RedisValue:
+    def execute(self, redis_cache: "RedisCache") -> RedisValue:
         try:
-            return cache.get(self.key)
+            return redis_cache.get(self.key)
         except KeyError:
             return RedisValue.from_value(None)
 
@@ -129,13 +129,13 @@ class InfoCommand(RedisCommand):
     def __init__(self, arg: RedisBulkStrings) -> None:
         self.arg = arg
 
-    def execute(self) -> RedisValue:
+    def execute(self, redis_cache: "RedisCache") -> RedisValue:
         if self.arg.serialize().lower() == "replication":
             pairs = {}
-            pairs["role"] = "master" if cache.is_master else "slave"
-            if cache.is_master:
-                pairs["master_replid"] = cache.master_replid
-                pairs["master_repl_offset"] = cache.master_repl_offset
+            pairs["role"] = "master" if redis_cache.is_master else "slave"
+            if redis_cache.is_master:
+                pairs["master_replid"] = redis_cache.master_replid
+                pairs["master_repl_offset"] = redis_cache.master_repl_offset
 
             return RedisValue.from_value(
                 "\r\n".join(f"{key}:{value}" for key, value in pairs.items())

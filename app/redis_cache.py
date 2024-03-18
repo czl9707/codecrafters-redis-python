@@ -1,68 +1,75 @@
 from abc import ABC
 from typing import Dict, List, Optional, Tuple, final
 from datetime import datetime
+import threading
+import socket
 
+from .redis_command import RedisCommand
 from .redis_value import RedisBulkStrings, RedisValue
 
-
-class RedisEntry:
-    def __init__(
-        self,
-        value: RedisValue,
-        expiration: Optional[datetime],
-    ) -> None:
-        self.value = value
-        self.expiration = expiration
+Address = Tuple[str, int]
 
 
 @final
 class RedisCache:
-    _instance: Optional["RedisCache"] = None
-
-    CACHE: Dict[RedisBulkStrings, RedisEntry]
+    CACHE: Dict[RedisBulkStrings, "RedisEntry"]
     is_master: bool
-    booted: bool
-    master_url: Optional[str]
-    master_port: Optional[int]
+    master_addr: Optional[Address]
     master_replid: Optional[str]
     master_repl_offset: Optional[int]
 
-    def __new__(cls):
-        if cls._instance is None:
-            instance = super(RedisCache, cls).__new__(cls)
-            instance.is_master = True
-            instance.booted = False
-            instance.master_url = None
-            instance.master_port = None
-            instance.master_replid = None
-            instance.master_repl_offset = None
-
-            cls._instance = instance
-        return cls._instance
+    def __init__(self) -> None:
+        self.is_master = True
+        self.master_addr = None
+        self.master_replid = None
+        self.master_repl_offset = None
 
     def config(
         self,
         is_master: bool,
-        master_url: Optional[str] = None,
-        master_port: Optional[int] = None,
+        master_addr: Optional[Address] = None,
     ):
-        if self.booted:
-            raise Exception("RedisCache can only be configed before boot.")
-
         self.is_master = is_master
-        self.master_url = master_url
-        self.master_port = master_port
+        self.master_addr = master_addr
 
-    def boot(self) -> None:
-        if self.booted:
-            raise Exception("RedisCache can only be booted once.")
-        self.booted = True
-
+    def boot(self, server_address: Address) -> None:
         if self.is_master:
             self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
             self.master_repl_offset = 0
 
         self.CACHE = {}
+        server_socket = socket.create_server(server_address, reuse_port=True)
+
+        if not self.is_master:
+            master_socket = socket.create_connection(self.master_addr)
+            master_socket.send(
+                RedisValue.from_value(
+                    [
+                        RedisValue.from_value("ping"),
+                    ]
+                ).deserialize()
+            )
+
+        while True:
+            sock, ret_addr = server_socket.accept()
+            t = threading.Thread(target=lambda: self._request_handler(sock))
+            t.start()
+
+    def _request_handler(self, sock: socket.socket) -> None:
+        while True:
+            request_bytes = sock.recv(1024)
+            if not request_bytes:
+                continue
+
+            try:
+                request_value = RedisValue.from_bytes(request_bytes)
+                print(request_value)
+                command = RedisCommand.from_redis_value(request_value)
+            except:
+                continue
+
+            response_value = command.execute(self)
+            sock.send(response_value.deserialize())
 
     # cache operation
     def get(self, key: RedisBulkStrings) -> RedisBulkStrings:
@@ -93,6 +100,16 @@ class RedisCache:
 
         for key in expired:
             self.CACHE.pop(key)
+
+
+class RedisEntry:
+    def __init__(
+        self,
+        value: RedisValue,
+        expiration: Optional[datetime],
+    ) -> None:
+        self.value = value
+        self.expiration = expiration
 
 
 class ExpirationPolicy(ABC):

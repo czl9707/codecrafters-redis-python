@@ -3,14 +3,13 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
 from .redis_value import (
-    RedisSimpleString,
     RedisValue,
     RedisArray,
     RedisBulkStrings,
 )
 
 if TYPE_CHECKING:
-    from .redis_server import RedisServer
+    from .redis_server import RedisServer, MasterServer
 
 
 class RedisCommand(ABC):
@@ -178,8 +177,28 @@ class ReplConfCommand(RedisCommand):
         self.listening_port = listening_port
         self.capabilities = capabilities
 
-    def execute(self, server: "RedisServer") -> RedisValue:
-        # ok = RedisSimpleString()
-        # ok.value = "OK"
-        # return ok
+    def execute(self, server: "MasterServer") -> RedisValue:
+        assert server.is_master
+
         return RedisValue.from_value("OK")
+
+
+class PsyncCommand(RedisCommand):
+    name = "replconf"
+
+    def __init__(
+        self,
+        replication_id: RedisBulkStrings,
+        replication_offset: RedisBulkStrings,
+    ) -> None:
+        self.replication_id = replication_id.serialize()
+        self.replication_offset = int(replication_offset.serialize())
+
+    def execute(self, server: "MasterServer") -> RedisValue:
+        assert server.is_master
+
+        replication_id = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+        offset = server.master_repl_offset
+        server.master_repl_offset += 1
+
+        return RedisValue.from_value(f"FULLRESYNC {replication_id} {offset}")

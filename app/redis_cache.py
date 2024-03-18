@@ -43,8 +43,8 @@ class RedisCache:
         self.master_repl_offset = 0
 
         self.CACHE = {}
-        server_socket = socket.create_server(server_address, reuse_port=True)
 
+        server_socket = socket.create_server(server_address, reuse_port=True)
         while True:
             sock, ret_addr = server_socket.accept()
             t = threading.Thread(target=lambda: self._request_handler(sock))
@@ -89,6 +89,12 @@ class RedisCache:
         )
         if response and RedisValue.from_bytes(response).serialize() != "OK":
             raise Exception("master not respond to REPLCONF request with OK")
+
+        server_socket = socket.create_server(server_address, reuse_port=True)
+        while True:
+            sock, ret_addr = server_socket.accept()
+            t = threading.Thread(target=lambda: self._request_handler(sock))
+            t.start()
 
     def _request_handler(self, sock: socket.socket) -> None:
         while True:

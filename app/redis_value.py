@@ -216,36 +216,10 @@ class RedisArray(RedisValue[List[RedisValue]]):
 
 
 # RDBFile is same as BulkStrings, but without CRLF at the end
+# and no need for serialization... For now
 class RedisRDBFile(RedisValue[str]):
     def __init__(self, value: str) -> None:
         self.value = value
-
-    @classmethod
-    def _serialize(
-        cls,
-        bytes_lines: Deque[bytes],
-        used_tokens: Optional[List[bytes]] = None,
-    ) -> Optional[str]:
-        l = bytes_lines.popleft()
-        if used_tokens is not None:
-            used_tokens.append(l)
-            used_tokens.append(CRLF)
-
-        size = int(l.decode()[1:])
-        total_length = 0
-        tokens = []
-        while total_length < size:
-            line = bytes_lines.popleft()
-            tokens.append(line)
-            tokens.append(CRLF)
-
-            total_length += len(line) + 2
-
-        bytes_string = b"".join(tokens)[:size]
-        if used_tokens is not None:
-            used_tokens.append(bytes_string)
-
-        return bytes_string.decode()
 
     @classmethod
     def _deserialize(cls, value: str) -> bytes:

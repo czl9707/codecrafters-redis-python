@@ -1,6 +1,6 @@
 import argparse
 
-from .redis_cache import RedisCache
+from .redis_server import MasterServer, ReplicaServer
 
 
 def main():
@@ -12,13 +12,15 @@ def main():
     if len(args.replica_of) not in (0, 2):
         raise Exception("replica of should either have 2 arguments or not been given")
 
-    cache = RedisCache()
     if args.replica_of:
-        cache.config(
-            is_master=False,
-            master_addr=(args.replica_of[0], int(args.replica_of[1])),
+        server = ReplicaServer(
+            ("localhost", args.port),
+            (args.replica_of[0], int(args.replica_of[1])),
         )
-    cache.boot(("localhost", args.port))
+    else:
+        server = MasterServer(("localhost", args.port))
+
+    server.boot()
 
 
 if __name__ == "__main__":

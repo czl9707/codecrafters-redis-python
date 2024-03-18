@@ -9,7 +9,7 @@ from .redis_value import (
 )
 
 if TYPE_CHECKING:
-    from .redis_cache import RedisCache
+    from .redis_server import RedisServer
 
 
 class RedisCommand(ABC):
@@ -32,7 +32,7 @@ class RedisCommand(ABC):
         return CommandType(*args, **kwargs)
 
     @abstractmethod
-    def execute(self, redis_cache: "RedisCache") -> RedisValue: ...
+    def execute(self, redis_cache: "RedisServer") -> RedisValue: ...
 
     @staticmethod
     def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
@@ -48,7 +48,7 @@ class PingCommand(RedisCommand):
     def __init__(self) -> None:
         return
 
-    def execute(self, redis_cache: "RedisCache") -> RedisValue:
+    def execute(self, redis_cache: "RedisServer") -> RedisValue:
         return RedisValue.from_value("PONG")
 
 
@@ -58,7 +58,7 @@ class EchoCommand(RedisCommand):
     def __init__(self, content: RedisBulkStrings) -> None:
         self.content = content
 
-    def execute(self, redis_cache: "RedisCache") -> RedisValue:
+    def execute(self, redis_cache: "RedisServer") -> RedisValue:
         return self.content
 
 
@@ -96,7 +96,7 @@ class SetCommand(RedisCommand):
         self.value = value
         self.expiration = expiration
 
-    def execute(self, redis_cache: "RedisCache") -> RedisValue:
+    def execute(self, redis_cache: "RedisServer") -> RedisValue:
         redis_cache.set(
             self.key,
             self.value,
@@ -116,7 +116,7 @@ class GetCommand(RedisCommand):
     def __init__(self, key: RedisBulkStrings) -> None:
         self.key = key
 
-    def execute(self, redis_cache: "RedisCache") -> RedisValue:
+    def execute(self, redis_cache: "RedisServer") -> RedisValue:
         try:
             return redis_cache.get(self.key)
         except KeyError:
@@ -129,7 +129,7 @@ class InfoCommand(RedisCommand):
     def __init__(self, arg: RedisBulkStrings) -> None:
         self.arg = arg
 
-    def execute(self, redis_cache: "RedisCache") -> RedisValue:
+    def execute(self, redis_cache: "RedisServer") -> RedisValue:
         if self.arg.serialize().lower() == "replication":
             pairs = {}
             pairs["role"] = "master" if redis_cache.is_master else "slave"

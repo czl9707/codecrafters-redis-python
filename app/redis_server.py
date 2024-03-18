@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple, final
 from datetime import datetime
 import threading
@@ -10,91 +10,15 @@ from .redis_value import RedisBulkStrings, RedisValue
 Address = Tuple[str, int]
 
 
-@final
-class RedisCache:
+class RedisServer:
     CACHE: Dict[RedisBulkStrings, "RedisEntry"]
-    is_master: bool
-    master_addr: Optional[Address]
-    master_replid: Optional[str]
-    master_repl_offset: Optional[int]
 
-    def __init__(self) -> None:
-        self.is_master = True
-        self.master_addr = None
-        self.master_replid = None
-        self.master_repl_offset = None
-
-    def config(
-        self,
-        is_master: bool,
-        master_addr: Optional[Address] = None,
-    ):
-        self.is_master = is_master
-        self.master_addr = master_addr
-
-    def boot(self, server_address: Address) -> None:
-        if self.is_master:
-            self.boot_master(server_address)
-        else:
-            self.boot_replica(server_address)
-
-    def boot_master(self, server_address: Address) -> None:
-        self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
-        self.master_repl_offset = 0
-
+    def __init__(self, server_addr: Address) -> None:
+        self.server_addr = server_addr
         self.CACHE = {}
 
-        server_socket = socket.create_server(server_address, reuse_port=True)
-        while True:
-            sock, ret_addr = server_socket.accept()
-            t = threading.Thread(target=lambda: self._request_handler(sock))
-            t.start()
-
-    def boot_replica(self, server_address: Address) -> None:
-        master_socket = socket.create_connection(self.master_addr)
-
-        # PING
-        master_socket.send(
-            RedisValue.from_value(
-                [
-                    RedisValue.from_value("ping"),
-                ]
-            ).deserialize()
-        )
-        response = master_socket.recv(1024)
-        if not response:
-            raise Exception("master not respond to PING request")
-
-        # REPLCONF
-        master_socket.send(
-            RedisValue.from_value(
-                [
-                    RedisValue.from_value("replconf"),
-                    RedisValue.from_value("listening-port"),
-                    RedisValue.from_value(str(server_address[1])),
-                ]
-            ).deserialize()
-        )
-        response = master_socket.recv(1024)
-        if response and RedisValue.from_bytes(response).serialize() != "OK":
-            raise Exception("master not respond to REPLCONF request with OK")
-        master_socket.send(
-            RedisValue.from_value(
-                [
-                    RedisValue.from_value("replconf"),
-                    RedisValue.from_value("capa"),
-                    RedisValue.from_value("psync2"),
-                ]
-            ).deserialize()
-        )
-        if response and RedisValue.from_bytes(response).serialize() != "OK":
-            raise Exception("master not respond to REPLCONF request with OK")
-
-        server_socket = socket.create_server(server_address, reuse_port=True)
-        while True:
-            sock, ret_addr = server_socket.accept()
-            t = threading.Thread(target=lambda: self._request_handler(sock))
-            t.start()
+    @abstractmethod
+    def boot(self) -> None: ...
 
     def _request_handler(self, sock: socket.socket) -> None:
         while True:
@@ -141,6 +65,87 @@ class RedisCache:
 
         for key in expired:
             self.CACHE.pop(key)
+
+
+class MasterServer(RedisServer):
+    def __init__(self, server_addr: Address) -> None:
+        super().__init__(server_addr)
+
+    def boot(self) -> None:
+        self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+        self.master_repl_offset = 0
+
+        server_socket = socket.create_server(self.server_addr, reuse_port=True)
+        while True:
+            sock, ret_addr = server_socket.accept()
+            t = threading.Thread(target=lambda: self._request_handler(sock))
+            t.start()
+
+
+class ReplicaServer(RedisServer):
+    def __init__(self, server_addr: Address, master_addr: Address) -> None:
+        super().__init__(server_addr)
+        self.master_addr = master_addr
+
+    def boot(self) -> None:
+        master_socket = socket.create_connection(self.master_addr)
+
+        # PING
+        master_socket.send(
+            RedisValue.from_value(
+                [
+                    RedisValue.from_value("ping"),
+                ]
+            ).deserialize()
+        )
+        response = master_socket.recv(1024)
+        if not response:
+            raise Exception("master not respond to PING request")
+
+        # REPLCONF
+        master_socket.send(
+            RedisValue.from_value(
+                [
+                    RedisValue.from_value("replconf"),
+                    RedisValue.from_value("listening-port"),
+                    RedisValue.from_value(str(self.server_addr[1])),
+                ]
+            ).deserialize()
+        )
+        response = master_socket.recv(1024)
+        if response and RedisValue.from_bytes(response).serialize() != "OK":
+            raise Exception("master not respond to REPLCONF request with OK")
+        master_socket.send(
+            RedisValue.from_value(
+                [
+                    RedisValue.from_value("replconf"),
+                    RedisValue.from_value("capa"),
+                    RedisValue.from_value("psync2"),
+                ]
+            ).deserialize()
+        )
+        if response and RedisValue.from_bytes(response).serialize() != "OK":
+            raise Exception("master not respond to REPLCONF request with OK")
+
+        # PSYNC
+        master_socket.send(
+            RedisValue.from_value(
+                [
+                    RedisValue.from_value("psync"),
+                    RedisValue.from_value("?"),
+                    RedisValue.from_value("-1"),
+                ]
+            ).deserialize()
+        )
+        response = master_socket.recv(1024)
+        if not response:
+            raise Exception("master not respond to PSYNC request")
+
+        server_socket = socket.create_server(self.server_addr, reuse_port=True)
+        while True:
+            sock, ret_addr = server_socket.accept()
+            t = threading.Thread(target=lambda: self._request_handler(sock))
+            t.start()
 
 
 class RedisEntry:

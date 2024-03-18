@@ -1,8 +1,11 @@
-from typing import TYPE_CHECKING, Dict, List, Tuple, Type, Any
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Type, Any
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
+from app.redis_server import RedisServer
+
 from .redis_value import (
+    RedisSimpleString,
     RedisValue,
     RedisArray,
     RedisBulkStrings,
@@ -127,10 +130,10 @@ class InfoCommand(RedisCommand):
     name = "info"
 
     def __init__(self, arg: RedisBulkStrings) -> None:
-        self.arg = arg
+        self.arg = arg.serialize().lower()
 
     def execute(self, server: "RedisServer") -> RedisValue:
-        if self.arg.serialize().lower() == "replication":
+        if self.arg == "replication":
             pairs = {}
             if server.is_master:
                 pairs["role"] = "master"
@@ -144,3 +147,41 @@ class InfoCommand(RedisCommand):
             )
         else:
             return RedisValue.from_value(None)
+
+
+class ReplConfCommand(RedisCommand):
+    name = "replconf"
+
+    @staticmethod
+    def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
+        parsed_kwargs = {
+            "capabilities": [],
+        }
+        it = iter(args)
+
+        for arg in it:
+            match arg.serialize().lower():
+                case "listening-port":
+                    port = int(next(it).serialize())
+                    parsed_kwargs["listening_port"] = port
+                case "capa":
+                    capa = next(it).serialize()
+                    parsed_kwargs["capabilities"].append(capa)
+                case _:
+                    pass
+
+        return [], parsed_kwargs
+
+    def __init__(
+        self,
+        listening_port: Optional[int] = None,
+        capabilities: List[str] = [],
+    ) -> None:
+        self.listening_port = listening_port
+        self.capabilities = capabilities
+
+    def execute(self, server: RedisServer) -> RedisValue:
+        # ok = RedisSimpleString()
+        # ok.value = "OK"
+        # return ok
+        return RedisValue.from_value("OK")

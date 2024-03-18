@@ -9,7 +9,7 @@ from .redis_value import (
 )
 
 if TYPE_CHECKING:
-    from .redis_server import RedisServer
+    from .redis_server import RedisServer, MasterServer
 
 
 class RedisCommand(ABC):
@@ -32,7 +32,7 @@ class RedisCommand(ABC):
         return CommandType(*args, **kwargs)
 
     @abstractmethod
-    def execute(self, redis_cache: "RedisServer") -> RedisValue: ...
+    def execute(self, server: "RedisServer") -> RedisValue: ...
 
     @staticmethod
     def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
@@ -48,7 +48,7 @@ class PingCommand(RedisCommand):
     def __init__(self) -> None:
         return
 
-    def execute(self, redis_cache: "RedisServer") -> RedisValue:
+    def execute(self, server: "RedisServer") -> RedisValue:
         return RedisValue.from_value("PONG")
 
 
@@ -58,7 +58,7 @@ class EchoCommand(RedisCommand):
     def __init__(self, content: RedisBulkStrings) -> None:
         self.content = content
 
-    def execute(self, redis_cache: "RedisServer") -> RedisValue:
+    def execute(self, server: "RedisServer") -> RedisValue:
         return self.content
 
 
@@ -96,8 +96,8 @@ class SetCommand(RedisCommand):
         self.value = value
         self.expiration = expiration
 
-    def execute(self, redis_cache: "RedisServer") -> RedisValue:
-        redis_cache.set(
+    def execute(self, server: "RedisServer") -> RedisValue:
+        server.set(
             self.key,
             self.value,
             (
@@ -116,9 +116,9 @@ class GetCommand(RedisCommand):
     def __init__(self, key: RedisBulkStrings) -> None:
         self.key = key
 
-    def execute(self, redis_cache: "RedisServer") -> RedisValue:
+    def execute(self, server: "RedisServer") -> RedisValue:
         try:
-            return redis_cache.get(self.key)
+            return server.get(self.key)
         except KeyError:
             return RedisValue.from_value(None)
 
@@ -129,13 +129,15 @@ class InfoCommand(RedisCommand):
     def __init__(self, arg: RedisBulkStrings) -> None:
         self.arg = arg
 
-    def execute(self, redis_cache: "RedisServer") -> RedisValue:
+    def execute(self, server: "RedisServer") -> RedisValue:
         if self.arg.serialize().lower() == "replication":
             pairs = {}
-            pairs["role"] = "master" if redis_cache.is_master else "slave"
-            if redis_cache.is_master:
-                pairs["master_replid"] = redis_cache.master_replid
-                pairs["master_repl_offset"] = redis_cache.master_repl_offset
+            if isinstance(server, MasterServer):
+                pairs["role"] = "master"
+                pairs["master_replid"] = server.master_replid
+                pairs["master_repl_offset"] = server.master_repl_offset
+            else:
+                pairs["role"] = "slave"
 
             return RedisValue.from_value(
                 "\r\n".join(f"{key}:{value}" for key, value in pairs.items())

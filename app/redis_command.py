@@ -184,7 +184,7 @@ class ReplConfCommand(RedisCommand):
 
 
 class PsyncCommand(RedisCommand):
-    name = "replconf"
+    name = "psync"
 
     def __init__(
         self,

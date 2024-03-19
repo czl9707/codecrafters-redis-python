@@ -247,10 +247,7 @@ class ReplConfCommand(RedisCommand):
         yield RedisBulkStrings.from_value("OK")
 
     def as_redis_value(self) -> RedisValue:
-        s = [
-            RedisBulkStrings.from_value(self.name),
-            self.arg,
-        ]
+        s = [RedisBulkStrings.from_value(self.name)]
 
         if self.listening_port is not None:
             s.append(RedisBulkStrings.from_value("listening-port"))

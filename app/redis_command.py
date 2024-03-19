@@ -22,6 +22,11 @@ class RedisCommand(ABC):
     name: str
 
     @staticmethod
+    def from_bytes(b: bytes) -> "RedisCommand":
+        redis_value = RedisValue.from_bytes(b)
+        return RedisCommand.from_redis_value(redis_value)
+
+    @staticmethod
     def from_redis_value(redis_value: RedisValue) -> "RedisCommand":
         assert isinstance(redis_value, RedisArray)
         for v in redis_value.serialize():
@@ -35,8 +40,8 @@ class RedisCommand(ABC):
         args, kwargs = CommandType.parse_args(list(it))
         return CommandType(*args, **kwargs)
 
-    @abstractmethod
-    def execute(self, server: "RedisServer") -> Iterator[RedisValue]: ...
+    def deserialize(self) -> bytes:
+        return self.as_redis_value().deserialize()
 
     @staticmethod
     def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
@@ -44,6 +49,12 @@ class RedisCommand(ABC):
 
     def __init_subclass__(cls) -> None:
         RedisCommand._name2command[cls.name] = cls
+
+    @abstractmethod
+    def execute(self, server: "RedisServer") -> Iterator[RedisValue]: ...
+
+    @abstractmethod
+    def as_redis_value(self) -> RedisValue: ...
 
 
 class PingCommand(RedisCommand):
@@ -55,6 +66,13 @@ class PingCommand(RedisCommand):
     def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
         yield RedisValue.from_value("PONG")
 
+    def as_redis_value(self) -> RedisValue:
+        return RedisValue.from_value(
+            [
+                RedisValue.from_value(self.name),
+            ]
+        )
+
 
 class EchoCommand(RedisCommand):
     name = "echo"
@@ -64,6 +82,14 @@ class EchoCommand(RedisCommand):
 
     def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
         yield self.content
+
+    def as_redis_value(self) -> RedisValue:
+        return RedisValue.from_value(
+            [
+                RedisValue.from_value(self.name),
+                self.content,
+            ]
+        )
 
 
 class SetCommand(RedisCommand):
@@ -113,6 +139,19 @@ class SetCommand(RedisCommand):
 
         yield RedisValue.from_value("OK")
 
+    def as_redis_value(self) -> RedisValue:
+        s = [
+            RedisValue.from_value(self.name),
+            self.key,
+            self.value,
+        ]
+
+        if self.expiration > 0:
+            s.append(RedisValue.from_value("px"))
+            s.append(RedisValue.from_value(str(self.expiration)))
+
+        return RedisValue.from_value(s)
+
 
 class GetCommand(RedisCommand):
     name = "get"
@@ -125,6 +164,14 @@ class GetCommand(RedisCommand):
             yield server.get(self.key)
         except KeyError:
             yield RedisValue.from_value(None)
+
+    def as_redis_value(self) -> RedisValue:
+        return RedisValue.from_value(
+            [
+                RedisValue.from_value(self.name),
+                self.key,
+            ]
+        )
 
 
 class InfoCommand(RedisCommand):
@@ -148,6 +195,14 @@ class InfoCommand(RedisCommand):
             )
         else:
             yield RedisValue.from_value(None)
+
+    def as_redis_value(self) -> RedisValue:
+        return RedisValue.from_value(
+            [
+                RedisValue.from_value(self.name),
+                self.arg,
+            ]
+        )
 
 
 class ReplConfCommand(RedisCommand):
@@ -186,6 +241,21 @@ class ReplConfCommand(RedisCommand):
 
         yield RedisValue.from_value("OK")
 
+    def as_redis_value(self) -> RedisValue:
+        s = [
+            RedisValue.from_value(self.name),
+            self.arg,
+        ]
+
+        if self.listening_port is not None:
+            s.append(RedisValue.from_value("listening-port"))
+            s.append(RedisValue.from_value(str(self.listening_port)))
+        for capa in self.capabilities:
+            s.append(RedisValue.from_value("capa"))
+            s.append(RedisValue.from_value(capa))
+
+        return RedisValue.from_value(s)
+
 
 class PsyncCommand(RedisCommand):
     name = "psync"
@@ -208,3 +278,12 @@ class PsyncCommand(RedisCommand):
         yield RedisValue.from_value(f"FULLRESYNC {replication_id} {offset}")
         file = RedisRDBFile(base64.b64decode(EMPTYRDB))
         yield file
+
+    def as_redis_value(self) -> RedisValue:
+        return RedisValue.from_value(
+            [
+                RedisValue.from_value(self.name),
+                RedisValue.from_value(self.replication_id),
+                RedisValue.from_value(str(self.replication_offset)),
+            ]
+        )

@@ -1,16 +1,17 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Tuple, final
+from typing import Dict, Optional, Tuple
 from datetime import datetime
 import threading
 import socket
 
+from .expiration_policy import ExpirationPolicy
 from .redis_command import RedisCommand
 from .redis_value import RedisBulkStrings, RedisValue
 
 Address = Tuple[str, int]
 
 
-class RedisServer:
+class RedisServer(ABC):
     CACHE: Dict[RedisBulkStrings, "RedisEntry"]
 
     def __init__(self, server_addr: Address) -> None:
@@ -31,9 +32,8 @@ class RedisServer:
                 continue
 
             try:
-                request_value = RedisValue.from_bytes(request_bytes)
+                command = RedisCommand.from_bytes(request_bytes)
                 # print(f"request: {request_value}")
-                command = RedisCommand.from_redis_value(request_value)
             except:
                 continue
 
@@ -169,22 +169,3 @@ class RedisEntry:
     ) -> None:
         self.value = value
         self.expiration = expiration
-
-
-class ExpirationPolicy(ABC):
-    ALL: List["ExpirationPolicy"] = []
-
-    @staticmethod
-    def is_expired(entry: RedisEntry) -> bool:
-        return any(policy.is_expired(entry) for policy in ExpirationPolicy.ALL)
-
-    def __init_subclass__(cls) -> None:
-        ExpirationPolicy.ALL.append(cls)
-
-
-class EndOfLifePolicy(ExpirationPolicy):
-    @staticmethod
-    def is_expired(entry: RedisEntry) -> bool:
-        if entry.expiration is not None and entry.expiration < datetime.now():
-            return True
-        return False

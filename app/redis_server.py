@@ -5,7 +5,7 @@ import threading
 import socket
 
 from .expiration_policy import ExpirationPolicy
-from .redis_command import RedisCommand
+from .redis_command import PingCommand, PsyncCommand, RedisCommand, ReplConfCommand
 from .redis_value import RedisBulkStrings, RedisValue
 
 Address = Tuple[str, int]
@@ -104,52 +104,24 @@ class ReplicaServer(RedisServer):
         master_socket = socket.create_connection(self.master_addr)
 
         # PING
-        master_socket.send(
-            RedisValue.from_value(
-                [
-                    RedisValue.from_value("ping"),
-                ]
-            ).deserialize()
-        )
+        master_socket.send(PingCommand().deserialize())
         response = master_socket.recv(1024)
         if not response:
             raise Exception("master not respond to PING request")
 
         # REPLCONF
         master_socket.send(
-            RedisValue.from_value(
-                [
-                    RedisValue.from_value("replconf"),
-                    RedisValue.from_value("listening-port"),
-                    RedisValue.from_value(str(self.server_addr[1])),
-                ]
-            ).deserialize()
+            ReplConfCommand(listening_port=self.server_addr[1]).deserialize()
         )
         response = master_socket.recv(1024)
         if response and RedisValue.from_bytes(response).serialize() != "OK":
             raise Exception("master not respond to REPLCONF request with OK")
-        master_socket.send(
-            RedisValue.from_value(
-                [
-                    RedisValue.from_value("replconf"),
-                    RedisValue.from_value("capa"),
-                    RedisValue.from_value("psync2"),
-                ]
-            ).deserialize()
-        )
+        master_socket.send(ReplConfCommand(capabilities=["psync2"]).deserialize())
         if response and RedisValue.from_bytes(response).serialize() != "OK":
             raise Exception("master not respond to REPLCONF request with OK")
 
         # PSYNC
-        master_socket.send(
-            RedisValue.from_value(
-                [
-                    RedisValue.from_value("psync"),
-                    RedisValue.from_value("?"),
-                    RedisValue.from_value("-1"),
-                ]
-            ).deserialize()
-        )
+        master_socket.send(PsyncCommand("?", -1).deserialize())
         response = master_socket.recv(1024)
         if not response:
             raise Exception("master not respond to PSYNC request")

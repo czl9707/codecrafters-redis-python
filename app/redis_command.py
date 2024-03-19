@@ -1,5 +1,5 @@
 import base64
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Type, Any
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Self, Type
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 
@@ -24,31 +24,24 @@ class RedisCommand(ABC):
     @staticmethod
     def from_bytes(b: bytes) -> "RedisCommand":
         redis_value = RedisValue.from_bytes(b)
-        return RedisCommand.from_redis_value(redis_value)
-
-    @staticmethod
-    def from_redis_value(redis_value: RedisValue) -> "RedisCommand":
         assert isinstance(redis_value, RedisArray)
         for v in redis_value.serialize():
             assert isinstance(v, RedisBulkStrings)
 
-        it = (v for v in redis_value.serialize())
-
-        name: str = next(it).serialize().lower()
-        CommandType = RedisCommand._name2command[name]
-
-        args, kwargs = CommandType.parse_args(list(it))
-        return CommandType(*args, **kwargs)
+        return RedisCommand.from_redis_value(redis_value.value)
 
     def deserialize(self) -> bytes:
         return self.as_redis_value().deserialize()
 
     @staticmethod
-    def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
-        return args, {}
+    @abstractmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        it = iter(args)
 
-    def __init_subclass__(cls) -> None:
-        RedisCommand._name2command[cls.name] = cls
+        name: str = next(it).serialize().lower()
+        CommandType = RedisCommand._name2command[name]
+
+        return CommandType.from_redis_value(it)
 
     @abstractmethod
     def execute(self, server: "RedisServer") -> Iterator[RedisValue]: ...
@@ -56,20 +49,24 @@ class RedisCommand(ABC):
     @abstractmethod
     def as_redis_value(self) -> RedisValue: ...
 
+    def __init_subclass__(cls) -> None:
+        RedisCommand._name2command[cls.name] = cls
+
 
 class PingCommand(RedisCommand):
     name = "ping"
 
-    def __init__(self) -> None:
-        return
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return PingCommand()
 
     def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
-        yield RedisValue.from_value("PONG")
+        yield RedisBulkStrings.from_value("PONG")
 
     def as_redis_value(self) -> RedisValue:
-        return RedisValue.from_value(
+        return RedisArray.from_value(
             [
-                RedisValue.from_value(self.name),
+                RedisBulkStrings.from_value(self.name),
             ]
         )
 
@@ -80,13 +77,17 @@ class EchoCommand(RedisCommand):
     def __init__(self, content: RedisBulkStrings) -> None:
         self.content = content
 
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return EchoCommand(next(args))
+
     def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
         yield self.content
 
     def as_redis_value(self) -> RedisValue:
-        return RedisValue.from_value(
+        return RedisArray.from_value(
             [
-                RedisValue.from_value(self.name),
+                RedisBulkStrings.from_value(self.name),
                 self.content,
             ]
         )
@@ -94,27 +95,6 @@ class EchoCommand(RedisCommand):
 
 class SetCommand(RedisCommand):
     name = "set"
-
-    @staticmethod
-    def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
-        parsed_args = []
-        parsed_kwargs = {}
-        it = iter(args)
-        parsed_args.append(next(it))  # key
-        parsed_args.append(next(it))  # value
-
-        for arg in it:
-            match arg.serialize().lower():
-                case "px":
-                    expire_ms = int(next(it).serialize())
-                    parsed_kwargs["expiration"] = expire_ms
-                case "p":
-                    expire_s = int(next(it).serialize())
-                    parsed_kwargs["expiration"] = expire_s * 1000
-                case _:
-                    pass
-
-        return parsed_args, parsed_kwargs
 
     def __init__(
         self,
@@ -125,6 +105,25 @@ class SetCommand(RedisCommand):
         self.key = key
         self.value = value
         self.expiration = expiration
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        kwargs = {}
+        kwargs["key"] = next(args)
+        kwargs["value"] = next(args)
+
+        for arg in args:
+            match arg.serialize().lower():
+                case "px":
+                    expire_ms = int(next(args).serialize())
+                    kwargs["expiration"] = expire_ms
+                case "p":
+                    expire_s = int(next(args).serialize())
+                    kwargs["expiration"] = expire_s * 1000
+                case _:
+                    raise Exception(f"Unknown arg: {arg.serialize()}")
+
+        return SetCommand(**kwargs)
 
     def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
         server.set(
@@ -137,20 +136,20 @@ class SetCommand(RedisCommand):
             ),
         )
 
-        yield RedisValue.from_value("OK")
+        yield RedisBulkStrings.from_value("OK")
 
     def as_redis_value(self) -> RedisValue:
         s = [
-            RedisValue.from_value(self.name),
+            RedisBulkStrings.from_value(self.name),
             self.key,
             self.value,
         ]
 
         if self.expiration > 0:
-            s.append(RedisValue.from_value("px"))
-            s.append(RedisValue.from_value(str(self.expiration)))
+            s.append(RedisBulkStrings.from_value("px"))
+            s.append(RedisBulkStrings.from_value(str(self.expiration)))
 
-        return RedisValue.from_value(s)
+        return RedisArray.from_value(s)
 
 
 class GetCommand(RedisCommand):
@@ -159,16 +158,20 @@ class GetCommand(RedisCommand):
     def __init__(self, key: RedisBulkStrings) -> None:
         self.key = key
 
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return GetCommand(next(args))
+
     def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
         try:
             yield server.get(self.key)
         except KeyError:
-            yield RedisValue.from_value(None)
+            yield RedisBulkStrings.from_value(None)
 
     def as_redis_value(self) -> RedisValue:
-        return RedisValue.from_value(
+        return RedisArray.from_value(
             [
-                RedisValue.from_value(self.name),
+                RedisBulkStrings.from_value(self.name),
                 self.key,
             ]
         )
@@ -177,8 +180,12 @@ class GetCommand(RedisCommand):
 class InfoCommand(RedisCommand):
     name = "info"
 
-    def __init__(self, arg: RedisBulkStrings) -> None:
-        self.arg = arg.serialize().lower()
+    def __init__(self, arg: str) -> None:
+        self.arg = arg
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return InfoCommand(next(args).serialize().lower())
 
     def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
         if self.arg == "replication":
@@ -190,16 +197,16 @@ class InfoCommand(RedisCommand):
             else:
                 pairs["role"] = "slave"
 
-            yield RedisValue.from_value(
+            yield RedisBulkStrings.from_value(
                 "\r\n".join(f"{key}:{value}" for key, value in pairs.items())
             )
         else:
-            yield RedisValue.from_value(None)
+            yield RedisBulkStrings.from_value(None)
 
     def as_redis_value(self) -> RedisValue:
-        return RedisValue.from_value(
+        return RedisArray.from_value(
             [
-                RedisValue.from_value(self.name),
+                RedisBulkStrings.from_value(self.name),
                 self.arg,
             ]
         )
@@ -207,26 +214,6 @@ class InfoCommand(RedisCommand):
 
 class ReplConfCommand(RedisCommand):
     name = "replconf"
-
-    @staticmethod
-    def parse_args(args: List[RedisBulkStrings]) -> Tuple[List[Any], Dict[str, Any]]:
-        parsed_kwargs = {
-            "capabilities": [],
-        }
-        it = iter(args)
-
-        for arg in it:
-            match arg.serialize().lower():
-                case "listening-port":
-                    port = int(next(it).serialize())
-                    parsed_kwargs["listening_port"] = port
-                case "capa":
-                    capa = next(it).serialize()
-                    parsed_kwargs["capabilities"].append(capa)
-                case _:
-                    pass
-
-        return [], parsed_kwargs
 
     def __init__(
         self,
@@ -236,25 +223,44 @@ class ReplConfCommand(RedisCommand):
         self.listening_port = listening_port
         self.capabilities = capabilities
 
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        kwargs = {
+            "capabilities": [],
+        }
+
+        for arg in args:
+            match arg.serialize().lower():
+                case "listening-port":
+                    port = int(next(args).serialize())
+                    kwargs["listening_port"] = port
+                case "capa":
+                    capa = next(args).serialize()
+                    kwargs["capabilities"].append(capa)
+                case _:
+                    pass
+
+        return ReplConfCommand(**kwargs)
+
     def execute(self, server: "MasterServer") -> Iterator[RedisValue]:
         assert server.is_master
 
-        yield RedisValue.from_value("OK")
+        yield RedisBulkStrings.from_value("OK")
 
     def as_redis_value(self) -> RedisValue:
         s = [
-            RedisValue.from_value(self.name),
+            RedisBulkStrings.from_value(self.name),
             self.arg,
         ]
 
         if self.listening_port is not None:
-            s.append(RedisValue.from_value("listening-port"))
-            s.append(RedisValue.from_value(str(self.listening_port)))
+            s.append(RedisBulkStrings.from_value("listening-port"))
+            s.append(RedisBulkStrings.from_value(str(self.listening_port)))
         for capa in self.capabilities:
-            s.append(RedisValue.from_value("capa"))
-            s.append(RedisValue.from_value(capa))
+            s.append(RedisBulkStrings.from_value("capa"))
+            s.append(RedisBulkStrings.from_value(capa))
 
-        return RedisValue.from_value(s)
+        return RedisArray.from_value(s)
 
 
 class PsyncCommand(RedisCommand):
@@ -262,11 +268,15 @@ class PsyncCommand(RedisCommand):
 
     def __init__(
         self,
-        replication_id: RedisBulkStrings,
-        replication_offset: RedisBulkStrings,
+        replication_id: str,
+        replication_offset: int,
     ) -> None:
-        self.replication_id = replication_id.serialize()
-        self.replication_offset = int(replication_offset.serialize())
+        self.replication_id = replication_id
+        self.replication_offset = replication_offset
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return PsyncCommand(next(args).serialize(), int(next(args).serialize()))
 
     def execute(self, server: "MasterServer") -> Iterator[RedisValue]:
         assert server.is_master
@@ -275,15 +285,15 @@ class PsyncCommand(RedisCommand):
         offset = server.master_repl_offset
         server.master_repl_offset += 1
 
-        yield RedisValue.from_value(f"FULLRESYNC {replication_id} {offset}")
+        yield RedisBulkStrings.from_value(f"FULLRESYNC {replication_id} {offset}")
         file = RedisRDBFile(base64.b64decode(EMPTYRDB))
         yield file
 
     def as_redis_value(self) -> RedisValue:
-        return RedisValue.from_value(
+        return RedisArray.from_value(
             [
-                RedisValue.from_value(self.name),
-                RedisValue.from_value(self.replication_id),
-                RedisValue.from_value(str(self.replication_offset)),
+                RedisBulkStrings.from_value(self.name),
+                RedisBulkStrings.from_value(self.replication_id),
+                RedisBulkStrings.from_value(str(self.replication_offset)),
             ]
         )

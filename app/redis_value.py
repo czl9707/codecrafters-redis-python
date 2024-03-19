@@ -51,9 +51,12 @@ class RedisValue(ABC, Generic[TBase]):
         redis_value.bytes_value = b
         return redis_value
 
-    @staticmethod
-    def from_value(value: TBase) -> "RedisValue":
-        redis_value = RedisValue._from_type(value.__class__)
+    @classmethod
+    def from_value(cls, value: TBase) -> "RedisValue":
+        if cls == RedisValue:
+            redis_value = RedisValue._from_type(value.__class__)
+        else:
+            redis_value = cls()
         redis_value.value = value
         return redis_value
 

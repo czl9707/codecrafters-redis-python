@@ -1,9 +1,10 @@
 import argparse
+import asyncio
 
 from .redis_server import MasterServer, ReplicaServer
 
 
-def main():
+async def main():
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--port", dest="port", default=6379, type=int)
     arg_parser.add_argument("--replicaof", dest="replica_of", default=[], nargs="*")
@@ -20,8 +21,8 @@ def main():
     else:
         server = MasterServer(("localhost", args.port))
 
-    server.boot()
+    await server.boot()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

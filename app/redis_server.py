@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Tuple
 from datetime import datetime
-import threading
+import asyncio
 import socket
 
 from .expiration_policy import ExpirationPolicy
@@ -18,28 +18,37 @@ class RedisServer(ABC):
         self.server_addr = server_addr
         self.CACHE = {}
 
-    @abstractmethod
-    def boot(self) -> None: ...
-
     @property
     @abstractmethod
     def is_master(self) -> bool: ...
 
-    def _request_handler(self, sock: socket.socket) -> None:
-        while True:
-            request_bytes = sock.recv(1024)
+    async def boot(self) -> None:
+        server = await asyncio.start_server(
+            client_connected_cb=self._request_handler,
+            host=self.server_addr[0],
+            port=self.server_addr[1],
+            reuse_port=True,
+        )
+
+        async with server:
+            await server.serve_forever()
+
+    async def _request_handler(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        try:
+            request_bytes = await reader.read(1024)
             if not request_bytes:
-                continue
+                return
+            print(f"request: {request_bytes}")
 
-            try:
-                command = RedisCommand.from_bytes(request_bytes)
-                # print(f"request: {request_value}")
-            except:
-                continue
-
+            command = RedisCommand.from_bytes(request_bytes)
             for response_value in command.execute(self):
                 # print(f"response: {response_value}")
-                sock.send(response_value.deserialize())
+                writer.write(response_value.deserialize())
+                await writer.drain()
+        finally:
+            writer.close()
 
     # cache operation
     def get(self, key: RedisBulkStrings) -> RedisBulkStrings:
@@ -75,20 +84,12 @@ class RedisServer(ABC):
 class MasterServer(RedisServer):
     def __init__(self, server_addr: Address) -> None:
         super().__init__(server_addr)
+        self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+        self.master_repl_offset = 0
 
     @property
     def is_master(self) -> bool:
         return True
-
-    def boot(self) -> None:
-        self.master_replid = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
-        self.master_repl_offset = 0
-
-        server_socket = socket.create_server(self.server_addr, reuse_port=True)
-        while True:
-            sock, ret_addr = server_socket.accept()
-            t = threading.Thread(target=lambda: self._request_handler(sock))
-            t.start()
 
 
 class ReplicaServer(RedisServer):
@@ -100,7 +101,7 @@ class ReplicaServer(RedisServer):
     def is_master(self) -> bool:
         return False
 
-    def boot(self) -> None:
+    async def boot(self) -> None:
         master_socket = socket.create_connection(self.master_addr)
 
         # PING
@@ -126,11 +127,7 @@ class ReplicaServer(RedisServer):
         if not response:
             raise Exception("master not respond to PSYNC request")
 
-        server_socket = socket.create_server(self.server_addr, reuse_port=True)
-        while True:
-            sock, ret_addr = server_socket.accept()
-            t = threading.Thread(target=lambda: self._request_handler(sock))
-            t.start()
+        await super().boot()
 
 
 class RedisEntry:

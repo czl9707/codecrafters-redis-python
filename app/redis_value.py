@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import base64
 from typing import Any, Dict, Deque, Generic, List, Optional, Type, TypeVar
 from collections import deque
 
@@ -253,11 +254,13 @@ class RedisRDBFile(RedisValue[str]):
 
     @classmethod
     def _deserialize(cls, value: str) -> bytes:
+        bytes_value = base64.b64decode(value)
+
         return b"".join(
             [
                 b"$",
-                str(len(value)).encode(),
+                str(len(bytes_value)).encode(),
                 CRLF,
-                value.encode(),
+                bytes_value,
             ]
         )

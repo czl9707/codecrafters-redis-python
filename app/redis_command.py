@@ -1,4 +1,3 @@
-import base64
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Self, Type
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
@@ -286,7 +285,7 @@ class PsyncCommand(RedisCommand):
         server.master_repl_offset += 1
 
         yield RedisBulkStrings.from_value(f"FULLRESYNC {replication_id} {offset}")
-        file = RedisRDBFile(base64.b64decode(EMPTYRDB))
+        file = RedisRDBFile(EMPTYRDB)
         yield file
 
     def as_redis_value(self) -> RedisValue:

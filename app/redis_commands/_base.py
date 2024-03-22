@@ -16,23 +16,17 @@ class RedisCommand(ABC):
 
     name: str
 
-    @staticmethod
-    def from_bytes(b: bytes) -> "RedisCommand":
-        redis_value = RedisValue.from_bytes(b)
-        assert isinstance(redis_value, RedisArray)
-        for v in redis_value.serialize():
-            assert isinstance(v, RedisBulkStrings)
-
-        return RedisCommand.from_redis_value(redis_value.value)
-
     def deserialize(self) -> bytes:
         return self.as_redis_value().deserialize()
 
     @staticmethod
     @abstractmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        it = iter(args)
+    def from_redis_value(redis_value: RedisArray) -> Self:
+        assert isinstance(redis_value, RedisArray)
+        for v in redis_value.serialize():
+            assert isinstance(v, RedisBulkStrings)
 
+        it = iter(redis_value.value)
         name: str = next(it).serialize().lower()
         CommandType = RedisCommand._name2command[name]
 

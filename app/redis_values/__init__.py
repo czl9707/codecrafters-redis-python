@@ -1,4 +1,7 @@
-from ._base import RedisValue
+from ._base import (
+    RedisValue,
+    RedisValueReader,
+)
 from ._impl import (
     RedisArray,
     RedisBulkStrings,

@@ -1,8 +1,21 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Deque, Generic, List, Optional, Type, TypeVar
+import asyncio
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Deque,
+)
 from collections import deque
 
+BUFFER_SIZE = 1024
 CRLF = b"\r\n"
+EOF = b""
 
 TBase = TypeVar("TBase")
 
@@ -13,11 +26,11 @@ class RedisValue(ABC, Generic[TBase]):
     symbol: bytes
     value_types: List[type] = []
 
-    bytes_value: Optional[bytes]
+    tokens: Optional[List[bytes]]
     value: Optional[TBase]
 
     def __init__(self) -> None:
-        self.bytes_value = None
+        self.tokens = None
         self.value = None
 
     def __repr__(self) -> str:
@@ -46,9 +59,13 @@ class RedisValue(ABC, Generic[TBase]):
         return RedisValue._type2value[t]()
 
     @staticmethod
-    def from_bytes(b: bytes) -> "RedisValue":
-        redis_value = RedisValue._from_symbol(b[0:1])
-        redis_value.bytes_value = b
+    def from_bytes(tokens: Deque[bytes] | bytes) -> "RedisValue":
+        if isinstance(tokens, bytes):
+            tokens = deque(tokens.split(CRLF))
+        assert isinstance(tokens, deque)
+
+        redis_value = RedisValue._from_symbol(tokens[0][:1])
+        redis_value.tokens = redis_value._prepare(tokens)
         return redis_value
 
     @classmethod
@@ -60,36 +77,58 @@ class RedisValue(ABC, Generic[TBase]):
         redis_value.value = value
         return redis_value
 
-    @staticmethod
-    def from_serialization(bytes_lines: Deque[bytes]) -> "RedisValue":
-        redis_value = RedisValue._from_symbol(bytes_lines[0][0:1])
-        used_tokens = []
-        redis_value.value = redis_value._serialize(bytes_lines, used_tokens)
-        redis_value.bytes_value = b"".join(used_tokens)
-        return redis_value
-
     def serialize(self) -> TBase:
         if self.value is None:
-            self.value = self._serialize(
-                deque(self.bytes_value.split(CRLF)),
-            )
+            self.value = self._serialize(self.tokens)
 
         return self.value
 
     def deserialize(self) -> bytes:
-        if self.bytes_value is None:
-            self.bytes_value = self._deserialize(self.value)
+        if self.tokens is None:
+            self.tokens = self._deserialize(self.value)
 
-        return self.bytes_value
-
-    @classmethod
-    @abstractmethod
-    def _serialize(
-        cls,
-        bytes_lines: Deque[bytes],
-        used_tokens: Optional[List[bytes]] = None,
-    ) -> TBase: ...
+        return CRLF.join([*self.tokens, EOF])
 
     @classmethod
     @abstractmethod
-    def _deserialize(cls, value: TBase) -> bytes: ...
+    def _serialize(cls, tokens: List[bytes]) -> TBase: ...
+
+    @classmethod
+    @abstractmethod
+    def _deserialize(cls, value: TBase) -> List[bytes]: ...
+
+    @classmethod
+    @abstractmethod
+    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]: ...
+
+
+class RedisValueReader:
+    def __init__(self, reader: asyncio.StreamReader) -> None:
+        self.reader = reader
+        self._deque = deque()
+
+    def __aiter__(self) -> AsyncIterator:
+        return self
+
+    async def read(self) -> RedisValue:
+        while not self.reader.at_eof():
+            while len(self._deque) and self._deque[0] == EOF:
+                self._deque.popleft()
+            if len(self._deque) == 0:
+                request_bytes = await self.reader.read(BUFFER_SIZE)
+                if not request_bytes:
+                    continue
+
+                self._deque.extend(request_bytes.split(CRLF))
+
+            redis_value = RedisValue.from_bytes(self._deque)
+            print(redis_value.deserialize())
+            return redis_value
+
+    async def __anext__(self) -> AsyncIterator[RedisValue]:
+        while True:
+            value = await self.read()
+            if value:
+                return value
+            else:
+                raise StopAsyncIteration

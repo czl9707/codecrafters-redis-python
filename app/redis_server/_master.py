@@ -3,12 +3,12 @@ import asyncio
 
 from ..helper import get_random_replication_id
 from ..redis_commands import RedisCommand
+from ..redis_values import RedisValueReader
 from ._base import (
     RedisServer,
     Address,
     ConnectionSession,
     ReplicaRecord,
-    BUFFER_SIZE,
 )
 
 
@@ -43,23 +43,15 @@ class MasterServer(RedisServer):
     ) -> None:
         session = ConnectionSession(reader, writer)
         try:
-            while not reader.at_eof():
-                print(f"reading")
-                request_bytes = await reader.read(BUFFER_SIZE)
-                if not request_bytes:
-                    continue
-
-                # print(f"master request: {request_bytes}")
-
-                command = RedisCommand.from_bytes(request_bytes)
+            async for redis_value in RedisValueReader(reader):
+                command = RedisCommand.from_redis_value(redis_value)
                 if command.is_write_command() and self.registrated_replicas:
                     # use the first replica for now
-                    replica = self.registrated_replicas[0]
+                    replica = list(self.registrated_replicas.values())[0]
                     replica.writer.write(command.deserialize())
                     await replica.writer.drain()
                     continue
 
-                print(command.as_redis_value())
                 for response_value in command.execute(self, session):
                     # print(f"sending response {response_value}")
                     writer.write(response_value.deserialize())

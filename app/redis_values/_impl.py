@@ -1,5 +1,6 @@
 import base64
-from typing import Deque, List, Optional
+from collections import deque
+from typing import Deque, List, Never, Optional
 
 from ._base import RedisValue, CRLF
 
@@ -8,84 +9,70 @@ class RedisSimpleString(RedisValue[str]):
     symbol = b"+"
 
     @classmethod
-    def _serialize(
-        cls,
-        bytes_lines: Deque[bytes],
-        used_tokens: Optional[List[bytes]] = None,
-    ) -> str:
-        l = bytes_lines.popleft()
-        if used_tokens is not None:
-            used_tokens.append(l)
-            used_tokens.append(CRLF)
-
-        return l.decode()[1:]
+    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+        return [tokens.popleft()]
 
     @classmethod
-    def _deserialize(cls, value: str) -> bytes:
-        return b"".join(
-            [
-                cls.symbol,
-                value.encode(),
-                CRLF,
-            ]
-        )
+    def _serialize(cls, tokens: List[bytes]) -> str:
+        return tokens[0].decode()[1:]
+
+    @classmethod
+    def _deserialize(cls, value: str) -> List[bytes]:
+        return [
+            cls.symbol + value.encode(),
+        ]
 
 
 class RedisBulkStrings(RedisValue[Optional[str]]):
     symbol = b"$"
     value_types = [str, None.__class__]
 
+    # RDB file will go into this catalog when inbound
     @classmethod
-    def _serialize(
-        cls,
-        bytes_lines: Deque[bytes],
-        used_tokens: Optional[List[bytes]] = None,
-    ) -> Optional[str]:
-        l = bytes_lines.popleft()
-        if used_tokens is not None:
-            used_tokens.append(l)
-            used_tokens.append(CRLF)
+    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+        header = tokens.popleft()
+        size = int(header.decode()[1:])
 
-        size = int(l.decode()[1:])
+        total_length = 0
+        string_bytes = []
+        while total_length < size:
+            s = tokens.popleft()
+            string_bytes.append(s)
+            total_length += len(s)
+
+            if total_length < size:
+                string_bytes.append(CRLF)
+            else:
+                break
+
+        bs = b"".join(string_bytes)
+        if len(bs) > size:
+            unused = bs[size:]
+            tokens.appendleft(unused)
+            s = bs[:size]
+
+        return [header, bs]
+
+    @classmethod
+    def _serialize(cls, tokens: List[bytes]) -> Optional[str]:
+        header = tokens[0]
+        size = int(header.decode()[1:])
         if size < 0:
             return None  # Handle NoneBulkString
 
-        total_length = 0
-        tokens = []
-        while total_length < size:
-            line = bytes_lines.popleft()
-            tokens.append(line)
-            tokens.append(CRLF)
-
-            total_length += len(line) + 2
-
-        bytes_string = b"".join(tokens)[:size]
-        if used_tokens is not None:
-            used_tokens.append(bytes_string)
-            used_tokens.append(CRLF)
-
-        return bytes_string.decode()
+        return tokens[1].decode()
 
     @classmethod
-    def _deserialize(cls, value: str) -> bytes:
+    def _deserialize(cls, value: str) -> List[bytes]:
         if value is not None:
-            return b"".join(
-                [
-                    cls.symbol,
-                    str(len(value)).encode(),
-                    CRLF,
-                    value.encode(),
-                    CRLF,
-                ]
-            )
+            return [
+                cls.symbol + str(len(value)).encode(),
+                value.encode(),
+            ]
         else:
-            return b"".join(
-                [
-                    cls.symbol,
-                    b"-1",
-                    CRLF,
-                ]
-            )
+            return [
+                cls.symbol + b"-1",
+            ]
 
 
 class RedisArray(RedisValue[List[RedisValue]]):
@@ -93,77 +80,62 @@ class RedisArray(RedisValue[List[RedisValue]]):
     value_types = [list]
 
     @classmethod
-    def _serialize(
-        cls,
-        bytes_lines: Deque[bytes],
-        used_tokens: Optional[List[bytes]] = None,
-    ) -> List[RedisValue]:
+    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+        header = tokens.popleft()
+        size = int(header.decode()[1:])
+
+        values = [header]
+        for _ in range(size):
+            redis_value = RedisValue._from_symbol(tokens[0][:1])
+            values.extend(redis_value._prepare(tokens))
+
+        return values
+
+    @classmethod
+    def _serialize(cls, tokens: List[bytes]) -> List[RedisValue]:
         children: List[RedisValue] = []
 
-        l = bytes_lines.popleft()
-        size = int(l.decode()[1:])
-        if used_tokens is not None:
-            used_tokens.append(l)
+        header = tokens[0]
+        size = int(header.decode()[1:])
 
+        children_bytes = deque(tokens[1:])
         for _ in range(size):
-            redis_value = RedisValue.from_serialization(bytes_lines)
+            redis_value = RedisValue.from_bytes(children_bytes)
             children.append(redis_value)
-
-            if used_tokens is not None:
-                used_tokens.extend(redis_value.deserialize())
 
         return children
 
     @classmethod
-    def _deserialize(cls, value: List[RedisValue]) -> bytes:
-        return b"".join(
-            [
-                cls.symbol,
-                str(len(value)).encode(),
-                CRLF,
-                *[v.deserialize() for v in value],
-            ]
-        )
+    def _deserialize(cls, value: List[RedisValue]) -> List[bytes]:
+        bytes_values = [cls.symbol + str(len(value)).encode()]
+        for v in value:
+            v.deserialize()  # ensure value get .tokens
+            bytes_values.extend(v.tokens)  # type: ignore
+        return bytes_values
 
 
 # RDBFile is same as BulkStrings, but without CRLF at the end
+# should not be serialize from value to bytes
 class RedisRDBFile(RedisValue[str]):
     @classmethod
-    def _serialize(
-        cls,
-        bytes_lines: Deque[bytes],
-        used_tokens: Optional[List[bytes]] = None,
-    ) -> Optional[str]:
-        l = bytes_lines.popleft()
-        if used_tokens is not None:
-            used_tokens.append(l)
-            used_tokens.append(CRLF)
-
-        size = int(l.decode()[1:])
-        total_length = 0
-        tokens = []
-        while total_length < size:
-            line = bytes_lines.popleft()
-            tokens.append(line)
-            tokens.append(CRLF)
-
-            total_length += len(line) + 2
-
-        bytes_string = b"".join(tokens)[:size]
-        if used_tokens is not None:
-            used_tokens.append(bytes_string)
-
-        return bytes_string.decode()
+    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+        raise NotImplementedError()
 
     @classmethod
-    def _deserialize(cls, value: str) -> bytes:
+    def _serialize(cls, tokens: List[bytes]) -> Never:
+        raise NotImplementedError()
+
+    @classmethod
+    def _deserialize(cls, value: str) -> List[bytes]:
         bytes_value = base64.b64decode(value)
 
-        return b"".join(
-            [
-                b"$",
-                str(len(bytes_value)).encode(),
-                CRLF,
-                bytes_value,
-            ]
-        )
+        return [
+            b"$" + str(len(bytes_value)).encode(),
+            bytes_value,
+        ]
+
+    def deserialize(self) -> bytes:
+        if self.tokens is None:
+            self.tokens = self._deserialize(self.value)
+
+        return CRLF.join(self.tokens)

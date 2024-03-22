@@ -1,6 +1,9 @@
 import asyncio
 
-from ..redis_values import RedisValue
+from ..redis_values import (
+    RedisValue,
+    RedisValueReader,
+)
 from ..redis_commands import (
     RedisCommand,
     PingCommand,
@@ -11,7 +14,6 @@ from ._base import (
     RedisServer,
     Address,
     ConnectionSession,
-    BUFFER_SIZE,
 )
 
 
@@ -40,7 +42,6 @@ class ReplicaServer(RedisServer):
             port=self.server_addr[1],
             reuse_port=True,
         )
-        print("start server")
         self.server = server
         async with server:
             await server.serve_forever()
@@ -49,10 +50,12 @@ class ReplicaServer(RedisServer):
         self, master_reader: asyncio.StreamReader, master_writer: asyncio.StreamWriter
     ) -> None:
         # PING
+        master_redis_value_reader = RedisValueReader(master_reader)
+
         master_writer.write(PingCommand().deserialize())
         await master_writer.drain()
-        response = await master_reader.read(BUFFER_SIZE)
-        if not response:
+        response_value = await master_redis_value_reader.read()
+        if not response_value:
             raise Exception("master not respond to PING request")
 
         # REPLCONF
@@ -60,40 +63,33 @@ class ReplicaServer(RedisServer):
             ReplConfCommand(listening_port=self.server_addr[1]).deserialize()
         )
         await master_writer.drain()
-        response = await master_reader.read(BUFFER_SIZE)
-        if response and RedisValue.from_bytes(response).serialize() != "OK":
+        response_value = await master_redis_value_reader.read()
+        if response_value and response_value.serialize() != "OK":
             raise Exception("master not respond to REPLCONF request with OK")
 
         master_writer.write(ReplConfCommand(capabilities=["psync2"]).deserialize())
         await master_writer.drain()
-        response = await master_reader.read(BUFFER_SIZE)
-        if response and RedisValue.from_bytes(response).serialize() != "OK":
+        response_value = await master_redis_value_reader.read()
+        if response_value and response_value.serialize() != "OK":
             raise Exception("master not respond to REPLCONF request with OK")
 
         # PSYNC
         master_writer.write(PsyncCommand("?", -1).deserialize())
         await master_writer.drain()
-        response = await master_reader.read(BUFFER_SIZE)
-        if not response:
+        response_value = await master_redis_value_reader.read()
+        if not response_value:
             raise Exception("master not respond to PSYNC request")
 
-        response = await master_reader.read(BUFFER_SIZE)
+        response_value = await master_redis_value_reader.read()
         print("I guess I received RDB File!")
-        return
 
     async def _server_request_handler(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         session = ConnectionSession(reader, writer)
         try:
-            while not reader.at_eof():
-                request_bytes = await reader.read(BUFFER_SIZE)
-                if not request_bytes:
-                    continue
-
-                print(f"replica server request: {request_bytes}")
-
-                command = RedisCommand.from_bytes(request_bytes)
+            async for redis_value in RedisValueReader(reader):
+                command = RedisCommand.from_redis_value(redis_value)
                 for response_value in command.execute(self, session):
                     writer.write(response_value.deserialize())
                     await writer.drain()
@@ -105,14 +101,8 @@ class ReplicaServer(RedisServer):
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         try:
-            while not reader.at_eof():
-                request_bytes = await reader.read(BUFFER_SIZE)
-                if not request_bytes:
-                    continue
-
-                print(f"replica master request: {request_bytes}")
-
-                command = RedisCommand.from_bytes(request_bytes)
+            async for redis_value in RedisValueReader(reader):
+                command = RedisCommand.from_redis_value(redis_value)
                 for _ in command.execute(self, None):
                     continue
         finally:

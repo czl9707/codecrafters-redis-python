@@ -24,15 +24,7 @@ async def main():
     else:
         server = MasterServer(("localhost", args.port))
 
-    # asyncio.create_task(print_all_tasks())
     await server.boot()
-
-
-async def print_all_tasks():
-    while True:
-        await asyncio.sleep(1)
-        for t in asyncio.all_tasks():
-            print(t.get_stack())
 
 
 if __name__ == "__main__":

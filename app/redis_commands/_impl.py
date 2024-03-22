@@ -1,55 +1,20 @@
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Self, Type
-from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Iterator, Optional, Self, Set
 from datetime import datetime, timedelta
 
-from .redis_value import (
+from ..helper import get_random_replication_id
+from ..redis_values import (
     RedisRDBFile,
     RedisValue,
     RedisArray,
     RedisBulkStrings,
 )
+from ._base import RedisCommand, write
 
 if TYPE_CHECKING:
-    from .redis_server import RedisServer, MasterServer
+    from ..redis_server import RedisServer, MasterServer, ConnectionSession
+
 
 EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
-
-
-class RedisCommand(ABC):
-    _name2command: Dict[str, Type["RedisCommand"]] = {}
-
-    name: str
-
-    @staticmethod
-    def from_bytes(b: bytes) -> "RedisCommand":
-        redis_value = RedisValue.from_bytes(b)
-        assert isinstance(redis_value, RedisArray)
-        for v in redis_value.serialize():
-            assert isinstance(v, RedisBulkStrings)
-
-        return RedisCommand.from_redis_value(redis_value.value)
-
-    def deserialize(self) -> bytes:
-        return self.as_redis_value().deserialize()
-
-    @staticmethod
-    @abstractmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        it = iter(args)
-
-        name: str = next(it).serialize().lower()
-        CommandType = RedisCommand._name2command[name]
-
-        return CommandType.from_redis_value(it)
-
-    @abstractmethod
-    def execute(self, server: "RedisServer") -> Iterator[RedisValue]: ...
-
-    @abstractmethod
-    def as_redis_value(self) -> RedisValue: ...
-
-    def __init_subclass__(cls) -> None:
-        RedisCommand._name2command[cls.name] = cls
 
 
 class PingCommand(RedisCommand):
@@ -59,7 +24,9 @@ class PingCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return PingCommand()
 
-    def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
+    def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> Iterator[RedisValue]:
         yield RedisBulkStrings.from_value("PONG")
 
     def as_redis_value(self) -> RedisValue:
@@ -80,7 +47,9 @@ class EchoCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return EchoCommand(next(args))
 
-    def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
+    def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> Iterator[RedisValue]:
         yield self.content
 
     def as_redis_value(self) -> RedisValue:
@@ -92,6 +61,7 @@ class EchoCommand(RedisCommand):
         )
 
 
+@write
 class SetCommand(RedisCommand):
     name = "set"
 
@@ -124,7 +94,9 @@ class SetCommand(RedisCommand):
 
         return SetCommand(**kwargs)
 
-    def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
+    def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> Iterator[RedisValue]:
         server.set(
             self.key,
             self.value,
@@ -161,7 +133,9 @@ class GetCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return GetCommand(next(args))
 
-    def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
+    def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> Iterator[RedisValue]:
         try:
             yield server.get(self.key)
         except KeyError:
@@ -186,7 +160,9 @@ class InfoCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return InfoCommand(next(args).serialize().lower())
 
-    def execute(self, server: "RedisServer") -> Iterator[RedisValue]:
+    def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> Iterator[RedisValue]:
         if self.arg == "replication":
             pairs = {}
             if server.is_master:
@@ -216,16 +192,16 @@ class ReplConfCommand(RedisCommand):
 
     def __init__(
         self,
+        capabilities: Optional[Set[str]] = None,
         listening_port: Optional[int] = None,
-        capabilities: List[str] = [],
     ) -> None:
         self.listening_port = listening_port
-        self.capabilities = capabilities
+        self.capabilities = capabilities if capabilities is not None else set()
 
     @staticmethod
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         kwargs = {
-            "capabilities": [],
+            "capabilities": set(),
         }
 
         for arg in args:
@@ -235,14 +211,21 @@ class ReplConfCommand(RedisCommand):
                     kwargs["listening_port"] = port
                 case "capa":
                     capa = next(args).serialize()
-                    kwargs["capabilities"].append(capa)
+                    kwargs["capabilities"].add(capa)
                 case _:
                     pass
 
         return ReplConfCommand(**kwargs)
 
-    def execute(self, server: "MasterServer") -> Iterator[RedisValue]:
+    def execute(
+        self, server: "MasterServer", session: "ConnectionSession"
+    ) -> Iterator[RedisValue]:
         assert server.is_master
+
+        for capa in self.capabilities:
+            session.replica_record.capabilities.add(capa)
+        if self.listening_port is not None:
+            session.replica_record.listening_port = self.listening_port
 
         yield RedisBulkStrings.from_value("OK")
 
@@ -274,16 +257,23 @@ class PsyncCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return PsyncCommand(next(args).serialize(), int(next(args).serialize()))
 
-    def execute(self, server: "MasterServer") -> Iterator[RedisValue]:
+    def execute(
+        self, server: "MasterServer", session: "ConnectionSession"
+    ) -> Iterator[RedisValue]:
         assert server.is_master
 
-        replication_id = "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+        replication_id = get_random_replication_id()
         offset = server.master_repl_offset
         server.master_repl_offset += 1
 
+        session.replica_record.replication_id = replication_id
+        session.replica_record.replication_offset = offset
+
         yield RedisBulkStrings.from_value(f"FULLRESYNC {replication_id} {offset}")
-        file = RedisRDBFile.from_value(EMPTYRDB)
-        yield file
+        yield RedisRDBFile.from_value(EMPTYRDB)
+
+        # after the replica receive file, then it really become a replica
+        server.registrate_replica(session.replica_record)
 
     def as_redis_value(self) -> RedisValue:
         return RedisArray.from_value(

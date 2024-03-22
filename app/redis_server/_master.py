@@ -3,7 +3,7 @@ import asyncio
 
 from ..helper import get_random_replication_id
 from ..redis_commands import RedisCommand
-from ..redis_values import RedisValueReader
+from ..redis_values import RedisValueReader, RedisValue
 from ._base import (
     RedisServer,
     Address,
@@ -48,9 +48,11 @@ class MasterServer(RedisServer):
                 if command.is_write_command() and self.registrated_replicas:
                     # use the first replica for now
                     replica = list(self.registrated_replicas.values())[0]
+
                     replica.writer.write(command.deserialize())
+                    writer.write(RedisValue.from_value("OK").deserialize())
                     await replica.writer.drain()
-                    continue
+                    await writer.drain()
 
                 for response_value in command.execute(self, session):
                     # print(f"sending response {response_value}")

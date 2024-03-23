@@ -89,6 +89,12 @@ class RedisValue(ABC, Generic[TBase]):
 
         return CRLF.join([*self.tokens, EOF])
 
+    @property
+    def bytes_size(self) -> int:
+        if self.tokens is None:
+            self.tokens = self._deserialize(self.value)
+        return sum(len(t) for t in self.tokens) + (len(self.tokens) - 1) * len(CRLF)
+
     @classmethod
     @abstractmethod
     def _serialize(cls, tokens: List[bytes]) -> TBase: ...

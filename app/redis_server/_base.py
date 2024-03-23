@@ -10,8 +10,6 @@ from ..redis_commands import ReplConfCommand, RedisCommand
 
 Address = Tuple[str, int]
 
-BUFFER_SIZE = 1024
-
 
 class RedisServer(ABC):
     CACHE: Dict[RedisBulkStrings, "RedisEntry"]

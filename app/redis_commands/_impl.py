@@ -291,7 +291,7 @@ class PsyncCommand(RedisCommand):
         replication_id = get_random_replication_id()
 
         session.replica_record.replication_id = replication_id
-        session.replica_record.replication_offset = server.replica_offset
+        session.replica_record.replication_offset = 0
 
         yield RedisBulkStrings.from_value(
             f"FULLRESYNC {replication_id} {server.replica_offset}"

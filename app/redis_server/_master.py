@@ -28,7 +28,7 @@ class MasterServer(RedisServer):
         assert replica_record.replication_offset is not None
         self.registrated_replicas[replica_record.replication_id] = replica_record
 
-        await replica_record.heart_beat()
+        # await replica_record.heart_beat()
 
     async def boot(self) -> None:
         server = await asyncio.start_server(
@@ -51,7 +51,9 @@ class MasterServer(RedisServer):
         session = ConnectionSession(value_reader, writer)
         try:
             async for redis_value in value_reader:
+                self.replica_offset += redis_value.bytes_size
                 command = RedisCommand.from_redis_value(redis_value)
+
                 if command.is_write_command():
                     for replica in self.registrated_replicas.values():
                         replica.writer.write(command.deserialize())

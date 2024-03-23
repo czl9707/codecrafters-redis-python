@@ -106,12 +106,12 @@ class ReplicaServer(RedisServer):
         session = ConnectionSession(value_reader, writer)
         try:
             async for redis_value in value_reader:
-                self.replica_offset += redis_value.bytes_size
                 command = RedisCommand.from_redis_value(redis_value)
-
                 async for response_value in command.execute(self, session):
                     writer.write(response_value.deserialize())
                     await writer.drain()
+
+                self.replica_offset += redis_value.bytes_size
         except:
             writer.close()
             await writer.wait_closed()
@@ -123,9 +123,7 @@ class ReplicaServer(RedisServer):
     ) -> None:
         try:
             async for redis_value in master_redis_value_reader:
-                self.replica_offset += redis_value.bytes_size
                 command = RedisCommand.from_redis_value(redis_value)
-
                 if command.is_replica_reply_command():
                     async for response in command.execute(self, None):
                         writer.write(response.deserialize())
@@ -133,6 +131,8 @@ class ReplicaServer(RedisServer):
                 else:
                     async for _ in command.execute(self, None):
                         continue
+
+                self.replica_offset += redis_value.bytes_size
 
         except Exception as e:
             print(f"lost connection to master: {e}")

@@ -115,7 +115,7 @@ class ReplicaServer(RedisServer):
                         writer.write(response.deserialize())
                     await writer.drain()
                 else:
-                    for _ in command.execute(self, None):
+                    async for _ in command.execute(self, None):
                         continue
 
         except Exception as e:

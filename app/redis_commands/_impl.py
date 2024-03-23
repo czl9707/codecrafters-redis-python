@@ -200,7 +200,7 @@ class ReplConfCommand(RedisCommand):
         self,
         capabilities: Optional[Set[str]] = None,
         listening_port: Optional[int] = None,
-        get_ack: Optional[bool] = None,
+        get_ack: Optional[str] = None,
         ack: Optional[int] = None,
     ) -> None:
         self.listening_port = listening_port
@@ -223,7 +223,8 @@ class ReplConfCommand(RedisCommand):
                     capa = next(args).serialize()
                     kwargs["capabilities"].add(capa)
                 case "getack":
-                    kwargs["get_ack"] = True
+                    get_ack_string = next(args).serialize()
+                    kwargs["get_ack"] = get_ack_string
                 case "ack":
                     offset = int(next(args).serialize())
                     kwargs["ack"] = offset
@@ -262,6 +263,7 @@ class ReplConfCommand(RedisCommand):
                 s.append(RedisBulkStrings.from_value(capa))
         if self.get_ack:
             s.append(RedisBulkStrings.from_value("getack"))
+            s.append(RedisBulkStrings.from_value("*"))
         if self.ack_offset is not None:
             s.append(RedisBulkStrings.from_value("ack"))
             s.append(RedisBulkStrings.from_value(str(self.ack_offset)))

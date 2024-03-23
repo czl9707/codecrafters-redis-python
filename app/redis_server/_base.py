@@ -113,7 +113,7 @@ class ReplicaRecord:
             while True:
                 await asyncio.sleep(1)
 
-                self.writer.write(ReplConfCommand(get_ack=True).deserialize())
+                self.writer.write(ReplConfCommand(get_ack="*").deserialize())
                 await self.writer.drain()
 
                 ack_response_command = RedisCommand.from_redis_value(

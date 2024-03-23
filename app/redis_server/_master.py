@@ -50,6 +50,7 @@ class MasterServer(RedisServer):
                     replica = list(self.registrated_replicas.values())[0]
 
                     replica.writer.write(command.deserialize())
+                    print("OK")
                     writer.write(RedisValue.from_value("OK").deserialize())
                     await replica.writer.drain()
                     await writer.drain()
@@ -59,7 +60,7 @@ class MasterServer(RedisServer):
                     writer.write(response_value.deserialize())
                     await writer.drain()
 
-        finally:
+        except:
             print("close connection")
             writer.close()
             await writer.wait_closed()

@@ -93,7 +93,7 @@ class ReplicaServer(RedisServer):
                 for response_value in command.execute(self, session):
                     writer.write(response_value.deserialize())
                     await writer.drain()
-        finally:
+        except:
             writer.close()
             await writer.wait_closed()
 
@@ -105,9 +105,10 @@ class ReplicaServer(RedisServer):
                 command = RedisCommand.from_redis_value(redis_value)
                 for _ in command.execute(self, None):
                     continue
-        finally:
+        except:
             print("lost connection to master")
             writer.close()
-            self.server.close()
             await writer.wait_closed()
+        finally:
+            self.server.close()
             await self.server.wait_closed()

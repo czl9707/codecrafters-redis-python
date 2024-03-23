@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, Optional, Self, Set
+from typing import TYPE_CHECKING, AsyncGenerator, Iterator, Optional, Self, Set, cast
 from datetime import datetime, timedelta
 
 from ..helper import get_random_replication_id
@@ -8,10 +8,15 @@ from ..redis_values import (
     RedisArray,
     RedisBulkStrings,
 )
-from ._base import RedisCommand, write
+from ._base import RedisCommand, write, replica_reply
 
 if TYPE_CHECKING:
-    from ..redis_server import RedisServer, MasterServer, ConnectionSession
+    from ..redis_server import (
+        RedisServer,
+        MasterServer,
+        ReplicaServer,
+        ConnectionSession,
+    )
 
 
 EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
@@ -24,9 +29,9 @@ class PingCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return PingCommand()
 
-    def execute(
+    async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> Iterator[RedisValue]:
+    ) -> AsyncGenerator[RedisValue, None]:
         yield RedisBulkStrings.from_value("PONG")
 
     def as_redis_value(self) -> RedisValue:
@@ -47,9 +52,9 @@ class EchoCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return EchoCommand(next(args))
 
-    def execute(
+    async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> Iterator[RedisValue]:
+    ) -> AsyncGenerator[RedisValue, None]:
         yield self.content
 
     def as_redis_value(self) -> RedisValue:
@@ -94,9 +99,9 @@ class SetCommand(RedisCommand):
 
         return SetCommand(**kwargs)
 
-    def execute(
+    async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> Iterator[RedisValue]:
+    ) -> AsyncGenerator[RedisValue, None]:
         server.set(
             self.key,
             self.value,
@@ -133,9 +138,9 @@ class GetCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return GetCommand(next(args))
 
-    def execute(
+    async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> Iterator[RedisValue]:
+    ) -> AsyncGenerator[RedisValue, None]:
         try:
             yield server.get(self.key)
         except KeyError:
@@ -160,9 +165,9 @@ class InfoCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return InfoCommand(next(args).serialize().lower())
 
-    def execute(
+    async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> Iterator[RedisValue]:
+    ) -> AsyncGenerator[RedisValue, None]:
         if self.arg == "replication":
             pairs = {}
             if server.is_master:
@@ -187,6 +192,7 @@ class InfoCommand(RedisCommand):
         )
 
 
+@replica_reply
 class ReplConfCommand(RedisCommand):
     name = "replconf"
 
@@ -194,9 +200,13 @@ class ReplConfCommand(RedisCommand):
         self,
         capabilities: Optional[Set[str]] = None,
         listening_port: Optional[int] = None,
+        get_ack: Optional[bool] = None,
+        ack: Optional[int] = None,
     ) -> None:
         self.listening_port = listening_port
         self.capabilities = capabilities if capabilities is not None else set()
+        self.get_ack = get_ack
+        self.ack_offset = ack
 
     @staticmethod
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
@@ -212,22 +222,33 @@ class ReplConfCommand(RedisCommand):
                 case "capa":
                     capa = next(args).serialize()
                     kwargs["capabilities"].add(capa)
+                case "getack":
+                    kwargs["get_ack"] = True
+                case "ack":
+                    offset = int(next(args).serialize())
+                    kwargs["ack"] = offset
                 case _:
-                    pass
+                    raise AttributeError(f"Unexpected Value {arg.serialize().lower()}")
 
         return ReplConfCommand(**kwargs)
 
-    def execute(
-        self, server: "MasterServer", session: "ConnectionSession"
-    ) -> Iterator[RedisValue]:
-        assert server.is_master
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncGenerator[RedisValue, None]:
+        if self.capabilities or self.listening_port:
+            assert server.is_master
 
-        for capa in self.capabilities:
-            session.replica_record.capabilities.add(capa)
-        if self.listening_port is not None:
-            session.replica_record.listening_port = self.listening_port
+            for capa in self.capabilities:
+                session.replica_record.capabilities.add(capa)
+            if self.listening_port is not None:
+                session.replica_record.listening_port = self.listening_port
 
-        yield RedisBulkStrings.from_value("OK")
+            yield RedisBulkStrings.from_value("OK")
+        elif self.get_ack:
+            assert not server.is_master
+            server = cast("ReplicaServer", server)
+
+            yield ReplConfCommand(ack=server.replica_offset).as_redis_value()
 
     def as_redis_value(self) -> RedisValue:
         s = [RedisBulkStrings.from_value(self.name)]
@@ -235,9 +256,15 @@ class ReplConfCommand(RedisCommand):
         if self.listening_port is not None:
             s.append(RedisBulkStrings.from_value("listening-port"))
             s.append(RedisBulkStrings.from_value(str(self.listening_port)))
-        for capa in self.capabilities:
-            s.append(RedisBulkStrings.from_value("capa"))
-            s.append(RedisBulkStrings.from_value(capa))
+        if self.capabilities:
+            for capa in self.capabilities:
+                s.append(RedisBulkStrings.from_value("capa"))
+                s.append(RedisBulkStrings.from_value(capa))
+        if self.get_ack:
+            s.append(RedisBulkStrings.from_value("getack"))
+        if self.ack_offset is not None:
+            s.append(RedisBulkStrings.from_value("ack"))
+            s.append(RedisBulkStrings.from_value(str(self.ack_offset)))
 
         return RedisArray.from_value(s)
 
@@ -257,9 +284,9 @@ class PsyncCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         return PsyncCommand(next(args).serialize(), int(next(args).serialize()))
 
-    def execute(
+    async def execute(
         self, server: "MasterServer", session: "ConnectionSession"
-    ) -> Iterator[RedisValue]:
+    ) -> AsyncGenerator[RedisValue, None]:
         assert server.is_master
 
         replication_id = get_random_replication_id()
@@ -273,7 +300,7 @@ class PsyncCommand(RedisCommand):
         yield RedisRDBFile.from_value(EMPTYRDB)
 
         # after the replica receive file, then it really become a replica
-        server.registrate_replica(session.replica_record)
+        await server.registrate_replica(session.replica_record)
 
     def as_redis_value(self) -> RedisValue:
         return RedisArray.from_value(

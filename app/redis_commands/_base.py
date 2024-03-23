@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Iterator, Self, Type
+from typing import TYPE_CHECKING, Dict, Type, AsyncGenerator
 from abc import ABC, abstractmethod
 
 from ..redis_values import (
@@ -21,7 +21,7 @@ class RedisCommand(ABC):
 
     @staticmethod
     @abstractmethod
-    def from_redis_value(redis_value: RedisArray) -> Self:
+    def from_redis_value(redis_value: RedisArray) -> "RedisCommand":
         assert isinstance(redis_value, RedisArray)
         for v in redis_value.serialize():
             assert isinstance(v, RedisBulkStrings)
@@ -33,9 +33,9 @@ class RedisCommand(ABC):
         return CommandType.from_redis_value(it)
 
     @abstractmethod
-    def execute(
+    async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> Iterator[RedisValue]: ...
+    ) -> AsyncGenerator[RedisValue, None]: ...
 
     @abstractmethod
     def as_redis_value(self) -> RedisValue: ...
@@ -49,7 +49,18 @@ class RedisCommand(ABC):
             return getattr(cls, "is_write")
         return False
 
+    @classmethod
+    def is_replica_reply_command(cls) -> bool:
+        if hasattr(cls, "replica_reply"):
+            return getattr(cls, "replica_reply")
+        return False
+
 
 def write(cls: Type[RedisCommand]) -> Type[RedisCommand]:
     cls.is_write = True
+    return cls
+
+
+def replica_reply(cls: Type[RedisCommand]) -> Type[RedisCommand]:
+    cls.replica_reply = True
     return cls

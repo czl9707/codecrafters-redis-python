@@ -33,7 +33,7 @@ class ReplicaServer(RedisServer):
             self.master_addr[0], self.master_addr[1]
         )
 
-        await self._master_handshake(master_reader, master_writer)
+        await self._handshake(master_reader, master_writer)
         asyncio.create_task(self._master_request_handler(master_reader, master_writer))
 
         server = await asyncio.start_server(
@@ -46,7 +46,7 @@ class ReplicaServer(RedisServer):
         async with server:
             await server.serve_forever()
 
-    async def _master_handshake(
+    async def _handshake(
         self, master_reader: asyncio.StreamReader, master_writer: asyncio.StreamWriter
     ) -> None:
         # PING
@@ -79,6 +79,13 @@ class ReplicaServer(RedisServer):
         response_value = await master_redis_value_reader.read()
         if not response_value:
             raise Exception("master not respond to PSYNC request")
+        else:
+            replica_info = response_value.serialize()
+            if not isinstance(replica_info, str):
+                raise Exception("master respond to PSYNC request in a wrong format")
+            _, replica_id, offset = replica_info.split(" ")
+            self.replica_id = replica_id
+            self.replica_offset = int(offset)
 
         response_value = await master_redis_value_reader.read()
         print("I guess I received RDB File!")
@@ -90,7 +97,7 @@ class ReplicaServer(RedisServer):
         try:
             async for redis_value in RedisValueReader(reader):
                 command = RedisCommand.from_redis_value(redis_value)
-                for response_value in command.execute(self, session):
+                async for response_value in command.execute(self, session):
                     writer.write(response_value.deserialize())
                     await writer.drain()
         except:
@@ -103,10 +110,16 @@ class ReplicaServer(RedisServer):
         try:
             async for redis_value in RedisValueReader(reader):
                 command = RedisCommand.from_redis_value(redis_value)
-                for _ in command.execute(self, None):
-                    continue
-        except:
-            print("lost connection to master")
+                if command.is_replica_reply_command():
+                    async for response in command.execute(self, None):
+                        writer.write(response.deserialize())
+                    await writer.drain()
+                else:
+                    for _ in command.execute(self, None):
+                        continue
+
+        except Exception as e:
+            print(f"lost connection to master: {e}")
             writer.close()
             await writer.wait_closed()
         finally:

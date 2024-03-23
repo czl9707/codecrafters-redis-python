@@ -23,8 +23,12 @@ class MasterServer(RedisServer):
     def is_master(self) -> bool:
         return True
 
-    def registrate_replica(self, replica_record: ReplicaRecord) -> None:
+    async def registrate_replica(self, replica_record: ReplicaRecord) -> None:
+        assert replica_record.replication_id is not None
+        assert replica_record.replication_offset is not None
         self.registrated_replicas[replica_record.replication_id] = replica_record
+
+        await replica_record.heart_beat()
 
     async def boot(self) -> None:
         server = await asyncio.start_server(
@@ -49,7 +53,7 @@ class MasterServer(RedisServer):
                     for replica in self.registrated_replicas.values():
                         replica.writer.write(command.deserialize())
 
-                for response_value in command.execute(self, session):
+                async for response_value in command.execute(self, session):
                     # print(f"sending response {response_value}")
                     writer.write(response_value.deserialize())
                     await writer.drain()

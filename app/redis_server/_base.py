@@ -4,7 +4,8 @@ from datetime import datetime
 import asyncio
 
 from ._expiration_policy import ExpirationPolicy
-from ..redis_values import RedisBulkStrings, RedisValue
+from ..redis_values import RedisBulkStrings, RedisValue, RedisValueReader
+from ..redis_commands import ReplConfCommand, RedisCommand
 
 
 Address = Tuple[str, int]
@@ -105,3 +106,24 @@ class ReplicaRecord:
         self.replication_offset = None
         self.listening_port = None
         self.capabilities = set()
+
+    async def heart_beat(self) -> None:
+        redis_value_reader = RedisValueReader(self.reader)
+        try:
+            while True:
+                await asyncio.sleep(1)
+
+                self.writer.write(ReplConfCommand(get_ack=True).deserialize())
+                await self.writer.drain()
+
+                ack_response_command = RedisCommand.from_redis_value(
+                    await redis_value_reader.read()
+                )
+
+                assert isinstance(ack_response_command, ReplConfCommand)
+                assert ack_response_command.ack_offset >= self.replication_offset
+                self.replication_offset = ack_response_command.ack_offset
+        except Exception as e:
+            print(f"replica closed: {e}")
+            self.writer.close()
+            await self.writer.wait_closed()

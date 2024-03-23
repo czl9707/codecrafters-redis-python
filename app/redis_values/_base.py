@@ -107,7 +107,7 @@ class RedisValueReader:
         self.reader = reader
         self._deque = deque()
 
-    def __aiter__(self) -> AsyncIterator:
+    def __aiter__(self) -> AsyncIterator[RedisValue]:
         return self
 
     async def read(self) -> RedisValue:
@@ -119,12 +119,13 @@ class RedisValueReader:
                 if not request_bytes:
                     continue
 
+                print(request_bytes)
                 self._deque.extend(request_bytes.split(CRLF))
 
             redis_value = RedisValue.from_bytes(self._deque)
             return redis_value
 
-    async def __anext__(self) -> AsyncIterator[RedisValue]:
+    async def __anext__(self) -> RedisValue:
         while True:
             value = await self.read()
             if value:

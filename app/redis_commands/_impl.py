@@ -331,7 +331,7 @@ class WaitCommand(RedisCommand):
         self, server: "MasterServer", session: "ConnectionSession"
     ) -> AsyncGenerator[RedisValue, None]:
         assert server.is_master
-        return RedisInteger.from_value(len(server.registrated_replicas))
+        yield RedisInteger.from_value(len(server.registrated_replicas))
 
     def as_redis_value(self) -> RedisValue:
         return RedisArray.from_value(

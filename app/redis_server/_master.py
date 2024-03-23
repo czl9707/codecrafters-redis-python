@@ -51,7 +51,8 @@ class MasterServer(RedisServer):
         session = ConnectionSession(value_reader, writer)
         try:
             async for redis_value in value_reader:
-                self.replica_offset += redis_value.bytes_size
+                # not sure how master_replica_offset used ???
+                # self.replica_offset += redis_value.bytes_size
                 command = RedisCommand.from_redis_value(redis_value)
 
                 if command.is_write_command():

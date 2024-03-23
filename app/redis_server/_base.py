@@ -73,10 +73,12 @@ class RedisEntry:
 class ConnectionSession:
     def __init__(
         self,
-        reader: asyncio.StreamReader,
+        reader: asyncio.StreamReader | RedisValueReader,
         writer: asyncio.StreamWriter,
     ) -> None:
         self.reader = reader
+        if not isinstance(self.reader, RedisValueReader):
+            self.reader = RedisValueReader(self.reader)
         self.writer = writer
         self._replica_record = None
 
@@ -99,7 +101,7 @@ class ReplicaRecord:
 
     def __init__(
         self,
-        reader: asyncio.StreamReader,
+        reader: asyncio.StreamReader | RedisValueReader,
         writer: asyncio.StreamWriter,
     ) -> None:
         self.reader = reader
@@ -110,7 +112,8 @@ class ReplicaRecord:
         self.capabilities = set()
 
     async def heart_beat(self) -> None:
-        redis_value_reader = RedisValueReader(self.reader)
+        if not isinstance(self.reader, RedisValueReader):
+            self.reader = RedisValueReader(self.reader)
         try:
             while True:
                 await asyncio.sleep(1)
@@ -119,7 +122,7 @@ class ReplicaRecord:
                 await self.writer.drain()
 
                 ack_response_command = RedisCommand.from_redis_value(
-                    await redis_value_reader.read()
+                    await self.reader.read()
                 )
 
                 assert isinstance(ack_response_command, ReplConfCommand)

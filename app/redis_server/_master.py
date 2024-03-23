@@ -43,11 +43,14 @@ class MasterServer(RedisServer):
             await server.serve_forever()
 
     async def _request_handler(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
     ) -> None:
-        session = ConnectionSession(reader, writer)
+        value_reader = RedisValueReader(reader)
+        session = ConnectionSession(value_reader, writer)
         try:
-            async for redis_value in RedisValueReader(reader):
+            async for redis_value in value_reader:
                 command = RedisCommand.from_redis_value(redis_value)
                 if command.is_write_command():
                     for replica in self.registrated_replicas.values():

@@ -10,8 +10,6 @@ async def main():
     arg_parser.add_argument("--replicaof", dest="replica_of", default=[], nargs="*")
     args = arg_parser.parse_args()
 
-    # logging.basicConfig(filename=f"./logs_{args.port}.txt", level=logging.DEBUG)
-
     if len(args.replica_of) not in (0, 2):
         raise Exception("replica of should either have 2 arguments or not been given")
 

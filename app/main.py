@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import logging
 
 from .redis_server import MasterServer, ReplicaServer
 

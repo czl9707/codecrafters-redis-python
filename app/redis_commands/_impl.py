@@ -263,13 +263,13 @@ class PsyncCommand(RedisCommand):
         assert server.is_master
 
         replication_id = get_random_replication_id()
-        offset = server.master_repl_offset
-        server.master_repl_offset += 1
 
         session.replica_record.replication_id = replication_id
-        session.replica_record.replication_offset = offset
+        session.replica_record.replication_offset = server.master_repl_offset
 
-        yield RedisBulkStrings.from_value(f"FULLRESYNC {replication_id} {offset}")
+        yield RedisBulkStrings.from_value(
+            f"FULLRESYNC {replication_id} {server.master_repl_offset}"
+        )
         yield RedisRDBFile.from_value(EMPTYRDB)
 
         # after the replica receive file, then it really become a replica

@@ -46,12 +46,11 @@ class MasterServer(RedisServer):
             async for redis_value in RedisValueReader(reader):
                 command = RedisCommand.from_redis_value(redis_value)
                 if command.is_write_command() and self.registrated_replicas:
-                    # use the first replica for now
-                    replica = list(self.registrated_replicas.values())[0]
-
-                    replica.writer.write(command.deserialize())
+                    for replica in self.registrated_replicas.values()
+                        replica.writer.write(command.deserialize())
+                        await replica.writer.drain()
+                        
                     writer.write(RedisValue.from_value("OK").deserialize())
-                    await replica.writer.drain()
                     await writer.drain()
                     continue
 

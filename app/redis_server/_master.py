@@ -50,10 +50,10 @@ class MasterServer(RedisServer):
                     replica = list(self.registrated_replicas.values())[0]
 
                     replica.writer.write(command.deserialize())
-                    print("OK")
                     writer.write(RedisValue.from_value("OK").deserialize())
                     await replica.writer.drain()
                     await writer.drain()
+                    continue
 
                 for response_value in command.execute(self, session):
                     # print(f"sending response {response_value}")

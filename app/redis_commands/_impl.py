@@ -172,8 +172,8 @@ class InfoCommand(RedisCommand):
             pairs = {}
             if server.is_master:
                 pairs["role"] = "master"
-                pairs["master_replid"] = server.master_replid
-                pairs["master_repl_offset"] = server.master_repl_offset
+                pairs["master_replid"] = server.replica_id
+                pairs["master_repl_offset"] = server.replica_offset
             else:
                 pairs["role"] = "slave"
 
@@ -246,9 +246,6 @@ class ReplConfCommand(RedisCommand):
 
             yield RedisBulkStrings.from_value("OK")
         elif self.get_ack:
-            assert not server.is_master
-            server = cast("ReplicaServer", server)
-
             yield ReplConfCommand(ack=server.replica_offset).as_redis_value()
 
     def as_redis_value(self) -> RedisValue:
@@ -294,10 +291,10 @@ class PsyncCommand(RedisCommand):
         replication_id = get_random_replication_id()
 
         session.replica_record.replication_id = replication_id
-        session.replica_record.replication_offset = server.master_repl_offset
+        session.replica_record.replication_offset = server.replica_offset
 
         yield RedisBulkStrings.from_value(
-            f"FULLRESYNC {replication_id} {server.master_repl_offset}"
+            f"FULLRESYNC {replication_id} {server.replica_offset}"
         )
         yield RedisRDBFile.from_value(EMPTYRDB)
 

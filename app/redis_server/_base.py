@@ -18,6 +18,8 @@ class RedisServer(ABC):
 
     def __init__(self, server_addr: Address) -> None:
         self.server_addr = server_addr
+        self.replica_id = None
+        self.replica_offset = None
         self.CACHE = {}
 
     @property

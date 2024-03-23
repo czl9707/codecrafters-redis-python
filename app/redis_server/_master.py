@@ -15,8 +15,8 @@ from ._base import (
 class MasterServer(RedisServer):
     def __init__(self, server_addr: Address) -> None:
         super().__init__(server_addr)
-        self.master_replid = get_random_replication_id()
-        self.master_repl_offset = 0
+        self.replica_id = get_random_replication_id()
+        self.replica_offset = 0
         self.registrated_replicas: Dict[str, ReplicaRecord] = {}
 
     @property

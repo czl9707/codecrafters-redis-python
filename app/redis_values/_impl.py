@@ -125,6 +125,12 @@ class RedisRDBFile(RedisValue[str]):
     def _serialize(cls, tokens: List[bytes]) -> Never:
         raise NotImplementedError()
 
+    @property
+    def bytes_size(self) -> int:
+        if self.tokens is None:
+            self.tokens = self._deserialize(self.value)
+        return sum(len(t) for t in self.tokens) + len(CRLF)
+
     @classmethod
     def _deserialize(cls, value: str) -> List[bytes]:
         bytes_value = base64.b64decode(value)

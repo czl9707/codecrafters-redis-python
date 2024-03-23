@@ -7,4 +7,5 @@ from ._impl import (
     RedisBulkStrings,
     RedisRDBFile,
     RedisSimpleString,
+    RedisInteger,
 )

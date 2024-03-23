@@ -23,6 +23,25 @@ class RedisSimpleString(RedisValue[str]):
         ]
 
 
+class RedisInteger(RedisValue[int]):
+    symbol = b":"
+    value_types = [int]
+
+    @classmethod
+    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+        return [tokens.popleft()]
+
+    @classmethod
+    def _serialize(cls, tokens: List[bytes]) -> int:
+        return int(tokens[0].decode()[1:])
+
+    @classmethod
+    def _deserialize(cls, value: int) -> List[bytes]:
+        return [
+            cls.symbol + str(value).encode(),
+        ]
+
+
 class RedisBulkStrings(RedisValue[Optional[str]]):
     symbol = b"$"
     value_types = [str, None.__class__]

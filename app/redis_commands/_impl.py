@@ -7,6 +7,7 @@ from ..redis_values import (
     RedisValue,
     RedisArray,
     RedisBulkStrings,
+    RedisInteger,
 )
 from ._base import RedisCommand, write, replica_reply
 
@@ -307,5 +308,36 @@ class PsyncCommand(RedisCommand):
                 RedisBulkStrings.from_value(self.name),
                 RedisBulkStrings.from_value(self.replication_id),
                 RedisBulkStrings.from_value(str(self.replication_offset)),
+            ]
+        )
+
+
+class WaitCommand(RedisCommand):
+    name = "wait"
+
+    def __init__(
+        self,
+        replica_num: int,
+        timeout: int,
+    ) -> None:
+        self.replica_num = replica_num
+        self.timeout = timeout
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return WaitCommand(int(next(args).serialize()), int(next(args).serialize()))
+
+    async def execute(
+        self, server: "MasterServer", session: "ConnectionSession"
+    ) -> AsyncGenerator[RedisValue, None]:
+        assert server.is_master
+        return RedisInteger.from_value(len(server.registrated_replicas))
+
+    def as_redis_value(self) -> RedisValue:
+        return RedisArray.from_value(
+            [
+                RedisBulkStrings.from_value(self.name),
+                RedisBulkStrings.from_value(str(self.replica_num)),
+                RedisBulkStrings.from_value(str(self.timeout)),
             ]
         )

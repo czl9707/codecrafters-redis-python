@@ -110,8 +110,6 @@ class ReplicaServer(RedisServer):
                 async for response_value in command.execute(self, session):
                     writer.write(response_value.deserialize())
                     await writer.drain()
-
-                self.replica_offset += redis_value.bytes_size
         except Exception as e:
             print(f"close connection: {e}")
             writer.close()

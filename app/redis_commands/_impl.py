@@ -346,7 +346,7 @@ class WaitCommand(RedisCommand):
                 )
                 replica.replication_offset = ack_response_command.ack_offset
 
-        finished, pending = await wait_for_n_finish(
+        finished, _ = await wait_for_n_finish(
             [
                 _wait_for_single_replia(replica)
                 for replica in server.registrated_replicas.values()

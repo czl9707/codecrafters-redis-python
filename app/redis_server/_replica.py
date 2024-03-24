@@ -112,7 +112,8 @@ class ReplicaServer(RedisServer):
                     await writer.drain()
 
                 self.replica_offset += redis_value.bytes_size
-        except:
+        except Exception as e:
+            print(f"close connection: {e}")
             writer.close()
             await writer.wait_closed()
 
@@ -121,6 +122,9 @@ class ReplicaServer(RedisServer):
         master_redis_value_reader: RedisValueReader,
         writer: asyncio.StreamWriter,
     ) -> None:
+        command_queue = asyncio.Queue()
+        asyncio.create_task(self._master_queue_processor(command_queue))
+
         try:
             async for redis_value in master_redis_value_reader:
                 command = RedisCommand.from_redis_value(redis_value)
@@ -128,11 +132,9 @@ class ReplicaServer(RedisServer):
                     async for response in command.execute(self, None):
                         writer.write(response.deserialize())
                     await writer.drain()
+                    self.replica_offset += redis_value.bytes_size
                 else:
-                    async for _ in command.execute(self, None):
-                        continue
-
-                self.replica_offset += redis_value.bytes_size
+                    await command_queue.put((command, redis_value.bytes_size))
 
         except Exception as e:
             print(f"lost connection to master: {e}")
@@ -141,3 +143,11 @@ class ReplicaServer(RedisServer):
         finally:
             self.server.close()
             await self.server.wait_closed()
+
+    async def _master_queue_processor(self, command_queue: asyncio.Queue):
+        while True:
+            command, offset = await command_queue.get()
+            async for _ in command.execute(self, None):
+                pass
+
+            self.replica_offset += offset

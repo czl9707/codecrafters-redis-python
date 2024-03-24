@@ -28,7 +28,7 @@ class MasterServer(RedisServer):
         assert replica_record.replication_offset is not None
         self.registrated_replicas[replica_record.replication_id] = replica_record
 
-        # await replica_record.heart_beat()
+        await replica_record.heart_beat()
 
     async def boot(self) -> None:
         server = await asyncio.start_server(
@@ -56,8 +56,10 @@ class MasterServer(RedisServer):
                 command = RedisCommand.from_redis_value(redis_value)
 
                 if command.is_write_command():
-                    for replica in self.registrated_replicas.values():
-                        replica.writer.write(command.deserialize())
+                    write_tasks = [
+                        replica.write(command.deserialize())
+                        for replica in self.registrated_replicas.values()
+                    ]
 
                 async for response_value in command.execute(self, session):
                     # print(f"sending response {response_value}")
@@ -65,13 +67,8 @@ class MasterServer(RedisServer):
                     await writer.drain()
 
                 if command.is_write_command():
-                    await asyncio.gather(
-                        *[
-                            replica.writer.drain()
-                            for replica in self.registrated_replicas.values()
-                        ]
-                    )
-        except:
-            print("close connection")
+                    await asyncio.gather(*write_tasks)
+        except Exception as e:
+            print(f"close connection {e}")
             writer.close()
             await writer.wait_closed()

@@ -74,9 +74,9 @@ class ConnectionSession:
         reader: asyncio.StreamReader | RedisValueReader,
         writer: asyncio.StreamWriter,
     ) -> None:
+        if not isinstance(reader, RedisValueReader):
+            reader = RedisValueReader(reader)
         self.reader = reader
-        if not isinstance(self.reader, RedisValueReader):
-            self.reader = RedisValueReader(self.reader)
         self.writer = writer
         self._replica_record = None
 
@@ -103,29 +103,40 @@ class ReplicaRecord:
         writer: asyncio.StreamWriter,
     ) -> None:
         self.reader = reader
+        if not isinstance(reader, RedisValueReader):
+            reader = RedisValueReader(reader)
+        self.reader = reader
         self.writer = writer
         self.replication_id = None
         self.replication_offset = None
         self.listening_port = None
         self.capabilities = set()
+        self.expected_offset = 0
+
+    async def write(self, b: bytes):
+        self.writer.write(b)
+        await self.writer.drain()
+        self.expected_offset += len(b)
+
+    async def read(self) -> RedisValue:
+        return await self.reader.read()
 
     async def heart_beat(self) -> None:
-        if not isinstance(self.reader, RedisValueReader):
-            self.reader = RedisValueReader(self.reader)
         try:
             while True:
-                await asyncio.sleep(1)
+                # place holder for now
+                await asyncio.sleep(10)
+                # await asyncio.sleep(1)
 
-                self.writer.write(ReplConfCommand(get_ack="*").deserialize())
-                await self.writer.drain()
+                # await self.write(ReplConfCommand(get_ack="*").deserialize())
 
-                ack_response_command = RedisCommand.from_redis_value(
-                    await self.reader.read()
-                )
+                # ack_response_command = RedisCommand.from_redis_value(
+                #     await self.read()
+                # )
 
-                assert isinstance(ack_response_command, ReplConfCommand)
-                assert ack_response_command.ack_offset >= self.replication_offset
-                self.replication_offset = ack_response_command.ack_offset
+                # assert isinstance(ack_response_command, ReplConfCommand)
+                # assert ack_response_command.ack_offset >= self.replication_offset
+                # self.replication_offset = ack_response_command.ack_offset
         except Exception as e:
             print(f"replica closed: {e}")
             self.writer.close()

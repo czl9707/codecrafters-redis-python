@@ -1,7 +1,8 @@
+import asyncio
 from typing import TYPE_CHECKING, AsyncGenerator, Iterator, Optional, Self, Set, cast
 from datetime import datetime, timedelta
 
-from ..helper import get_random_replication_id
+from ..helper import get_random_replication_id, wait_for_n_finish
 from ..redis_values import (
     RedisRDBFile,
     RedisValue,
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
         ReplicaServer,
         ConnectionSession,
     )
+    from ..redis_server._base import ReplicaRecord
 
 
 EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
@@ -331,7 +333,28 @@ class WaitCommand(RedisCommand):
         self, server: "MasterServer", session: "ConnectionSession"
     ) -> AsyncGenerator[RedisValue, None]:
         assert server.is_master
-        yield RedisInteger.from_value(len(server.registrated_replicas))
+
+        async def _wait_for_single_replia(replica: "ReplicaRecord"):
+            while True:
+                expected_offset = replica.expected_offset
+                await replica.write(ReplConfCommand(get_ack="*").deserialize())
+                ack_response_command = RedisCommand.from_redis_value(
+                    await replica.read()
+                )
+
+                if ack_response_command.ack_offset == expected_offset:
+                    break
+
+        finished, pending = await wait_for_n_finish(
+            [
+                _wait_for_single_replia(replica)
+                for replica in server.registrated_replicas.values()
+            ],
+            self.replica_num,
+            self.timeout / 1000,
+        )
+
+        yield RedisInteger.from_value(len(finished))
 
     def as_redis_value(self) -> RedisValue:
         return RedisArray.from_value(

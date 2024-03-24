@@ -10,19 +10,18 @@ from ..redis_commands import (
     PsyncCommand,
     ReplConfCommand,
 )
-from ._base import (
-    RedisServer,
-    Address,
-    ConnectionSession,
-)
+from ._base import RedisServer, Address, ConnectionSession, ServerConfig
 
 
 class ReplicaServer(RedisServer):
-    def __init__(self, server_addr: Address, master_addr: Address) -> None:
-        super().__init__(server_addr)
+    def __init__(
+        self,
+        server_addr: Address,
+        config: ServerConfig,
+        master_addr: Address,
+    ) -> None:
+        super().__init__(server_addr, config)
         self.master_addr = master_addr
-        self.replica_id = None
-        self.replica_offset = None
 
     @property
     def is_master(self) -> bool:

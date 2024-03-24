@@ -302,6 +302,7 @@ class PsyncCommand(RedisCommand):
         yield RedisRDBFile.from_value(EMPTYRDB)
 
         # after the replica receive file, then it really become a replica
+        # this line block the server connection handler, and hand over all stuff to heartbeat
         await server.registrate_replica(session.replica_record)
 
     def as_redis_value(self) -> RedisValue:
@@ -365,3 +366,47 @@ class WaitCommand(RedisCommand):
                 RedisBulkStrings.from_value(str(self.timeout)),
             ]
         )
+
+
+class ConfigCommand(RedisCommand):
+    name = "config"
+
+    def __init__(
+        self,
+        get: Optional[str],
+    ) -> None:
+        self.get = get
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        kwargs = {}
+
+        for arg in args:
+            match arg.serialize().lower():
+                case "get":
+                    name = next(args).serialize()
+                    kwargs["get"] = name
+                case _:
+                    raise AttributeError(f"Unexpected Value {arg.serialize().lower()}")
+
+        return ConfigCommand(**kwargs)
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncGenerator[RedisValue, None]:
+        if self.get:
+            yield RedisArray.from_value(
+                [
+                    RedisBulkStrings.from_value(self.get),
+                    RedisBulkStrings.from_value(str(server.config[self.get])),
+                ]
+            )
+
+    def as_redis_value(self) -> RedisValue:
+        s = [RedisBulkStrings.from_value(self.name)]
+
+        if self.get is not None:
+            s.append(RedisBulkStrings.from_value("get"))
+            s.append(RedisBulkStrings.from_value(self.get))
+
+        return RedisArray.from_value(s)

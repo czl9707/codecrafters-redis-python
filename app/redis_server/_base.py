@@ -1,21 +1,27 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Tuple
+import pathlib
+from typing import Dict, Optional, Tuple, TypedDict
 from datetime import datetime
 import asyncio
 
 from ._expiration_policy import ExpirationPolicy
 from ..redis_values import RedisBulkStrings, RedisValue, RedisValueReader
-from ..redis_commands import ReplConfCommand, RedisCommand
 
 
 Address = Tuple[str, int]
 
 
+class ServerConfig(TypedDict, total=False):
+    dir: pathlib.Path
+    dbfilename: str
+
+
 class RedisServer(ABC):
     CACHE: Dict[RedisBulkStrings, "RedisEntry"]
 
-    def __init__(self, server_addr: Address) -> None:
+    def __init__(self, server_addr: Address, config: ServerConfig) -> None:
         self.server_addr = server_addr
+        self.config = config
         self.replica_id = None
         self.replica_offset = None
         self.CACHE = {}
@@ -88,15 +94,6 @@ class ConnectionSession:
 
 
 class ReplicaRecord:
-    __slot__ = [
-        "reader",
-        "writer",
-        "replication_id",
-        "replication_offset",
-        "listening_port",
-        "capabilities",
-    ]
-
     def __init__(
         self,
         reader: asyncio.StreamReader | RedisValueReader,

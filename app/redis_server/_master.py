@@ -9,12 +9,13 @@ from ._base import (
     Address,
     ConnectionSession,
     ReplicaRecord,
+    ServerConfig,
 )
 
 
 class MasterServer(RedisServer):
-    def __init__(self, server_addr: Address) -> None:
-        super().__init__(server_addr)
+    def __init__(self, server_addr: Address, config: ServerConfig) -> None:
+        super().__init__(server_addr, config)
         self.replica_id = get_random_replication_id()
         self.replica_offset = 0
         self.registrated_replicas: Dict[str, ReplicaRecord] = {}

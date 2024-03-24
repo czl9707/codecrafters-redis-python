@@ -15,11 +15,11 @@ async def wait_for_n_finish(
     coros: List[Coroutine], n: int, timeout: int = 0
 ) -> Tuple[List[asyncio.Task], List[asyncio.Task]]:
     n = min(len(coros), n)
-    if n == 0:
-        return [], []
-
     pending = [asyncio.create_task(coro) for coro in coros]
     finished = []
+
+    if n == 0:
+        return finished, pending
 
     if timeout > 0:
         timeout_task = asyncio.create_task(asyncio.sleep(timeout))

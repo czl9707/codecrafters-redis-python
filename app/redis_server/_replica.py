@@ -120,8 +120,8 @@ class ReplicaServer(RedisServer):
         master_redis_value_reader: RedisValueReader,
         writer: asyncio.StreamWriter,
     ) -> None:
-        # command_queue = asyncio.Queue()
-        # asyncio.create_task(self._master_queue_processor(command_queue))
+        command_queue = asyncio.Queue()
+        asyncio.create_task(self._master_queue_processor(command_queue))
 
         try:
             async for redis_value in master_redis_value_reader:
@@ -131,9 +131,7 @@ class ReplicaServer(RedisServer):
                         writer.write(response.deserialize())
                     await writer.drain()
                 else:
-                    # await command_queue.put((command, redis_value.bytes_size))
-                    async for _ in command.execute(self, None):
-                        pass
+                    await command_queue.put((command, redis_value.bytes_size))
 
                 self.replica_offset += redis_value.bytes_size
 
@@ -145,10 +143,10 @@ class ReplicaServer(RedisServer):
             self.server.close()
             await self.server.wait_closed()
 
-    # async def _master_queue_processor(self, command_queue: asyncio.Queue):
-    #     while True:
-    #         command, offset = await command_queue.get()
-    #         async for _ in command.execute(self, None):
-    #             pass
+    async def _master_queue_processor(self, command_queue: asyncio.Queue):
+        while True:
+            command, offset = await command_queue.get()
+            async for _ in command.execute(self, None):
+                pass
 
-    #         self.replica_offset += offset
+            self.replica_offset += offset

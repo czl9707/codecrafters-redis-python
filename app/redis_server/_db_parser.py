@@ -1,6 +1,6 @@
 import io
 import pathlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, TYPE_CHECKING, Optional
 
 from ..redis_values import RedisBulkStrings, RedisValue
@@ -20,6 +20,17 @@ OPCODE_STRING_TYPE = b"\x00"
 
 class DatabaseParser:
     def __init__(self, rdb_path: pathlib.Path) -> None:
+        self._op2parser = {
+            OPCODE_AUX: self._parse_aux,
+            OPCODE_RESIZEDB: self._parse_resizedb,
+            OPCODE_EXPIRETIME: self._parse_expiretime,
+            OPCODE_EXPIRETIMEMS: self._parse_expiretime_ms,
+            OPCODE_SELECTDB: self._parse_selectdb,
+            OPCODE_STRING_TYPE: lambda file: self._parse_key_value_pair(
+                file, self._parse_string
+            ),
+        }
+
         self.rdb_path = rdb_path
         self.aux = {}
         self.db_size = 0
@@ -33,22 +44,13 @@ class DatabaseParser:
             self.parse(file)
 
     def parse(self, file: io.BufferedReader):
-        _op2parser = {
-            OPCODE_AUX: self._parse_aux,
-            OPCODE_RESIZEDB: self._parse_resizedb,
-            OPCODE_EXPIRETIME: self._parse_expiretime,
-            OPCODE_EXPIRETIMEMS: self._parse_expiretime_ms,
-            OPCODE_SELECTDB: self._parse_selectdb,
-            OPCODE_STRING_TYPE: lambda file: self._parse_key_value_pair(
-                file, self._parse_string
-            ),
-        }
+
         self._check_magic_string(file)
         self._check_version(file)
 
         opcode = file.read(1)
         while opcode != OPCODE_EOF:
-            _op2parser[opcode](file)
+            self._op2parser[opcode](file)
 
             opcode = file.read(1)
 
@@ -109,7 +111,7 @@ class DatabaseParser:
         self,
         file: io.BufferedReader,
         value_parser: Callable[[io.BufferedReader], Any],
-    ) -> None:
+    ) -> RedisBulkStrings:
         key = RedisBulkStrings.from_value(self._parse_string(file))
         value = RedisValue.from_value(value_parser(file))
 
@@ -118,12 +120,25 @@ class DatabaseParser:
             self.redis_entries[key] = entry
         else:
             self.redis_entries[key].value = value
+        return key
 
     def _parse_expiretime(self, file: io.BufferedReader) -> None:
-        raise NotImplemented
+        sec = int.from_bytes(file.read(4))
+        opcode = file.read(1)
+        key: RedisBulkStrings = self._op2parser[opcode](file)
+        self.redis_entries[key].expiration = datetime.now() + timedelta(seconds=sec)
+
+        return key
 
     def _parse_expiretime_ms(self, file: io.BufferedReader) -> None:
-        raise NotImplemented
+        msec = int.from_bytes(file.read(4))
+        opcode = file.read(1)
+        key: RedisBulkStrings = self._op2parser[opcode](file)
+        self.redis_entries[key].expiration = datetime.now() + timedelta(
+            milliseconds=msec
+        )
+
+        return key
 
 
 class RedisEntry:

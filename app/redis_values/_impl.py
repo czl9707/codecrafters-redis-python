@@ -138,11 +138,11 @@ class RedisArray(RedisValue[List[RedisValue]]):
 class RedisRDBFile(RedisValue[str]):
     @classmethod
     def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
-        raise NotImplementedError()
+        raise NotImplemented
 
     @classmethod
     def _serialize(cls, tokens: List[bytes]) -> Never:
-        raise NotImplementedError()
+        raise NotImplemented
 
     @property
     def bytes_size(self) -> int:

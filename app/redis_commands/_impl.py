@@ -12,6 +12,9 @@ from ..redis_values import (
 )
 from ._base import RedisCommand, write, replica_reply
 
+EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
+
+
 if TYPE_CHECKING:
     from ..redis_server import (
         RedisServer,
@@ -20,9 +23,6 @@ if TYPE_CHECKING:
         ConnectionSession,
     )
     from ..redis_server._base import ReplicaRecord
-
-
-EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
 
 
 class PingCommand(RedisCommand):

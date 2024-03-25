@@ -1,7 +1,9 @@
 import asyncio
+from io import BytesIO
 
 from ..redis_values import (
     RedisValue,
+    RedisBulkStrings,
     RedisValueReader,
 )
 from ..redis_commands import (
@@ -11,6 +13,7 @@ from ..redis_commands import (
     ReplConfCommand,
 )
 from ._base import RedisServer, Address, ConnectionSession, ServerConfig
+from ._db_parser import DatabaseParser
 
 
 class ReplicaServer(RedisServer):
@@ -21,6 +24,9 @@ class ReplicaServer(RedisServer):
         master_addr: Address,
     ) -> None:
         super().__init__(server_addr, config)
+        rdb_path = self.config["dir"].joinpath(self.config["dbfilename"])
+        assert not rdb_path.exists()
+
         self.master_addr = master_addr
 
     @property
@@ -94,7 +100,15 @@ class ReplicaServer(RedisServer):
             self.replica_offset = int(offset)
 
         response_value = await master_reader.read()
-        print("I guess I received RDB File!")
+        print("I received RDB File!")
+        assert isinstance(response_value, RedisBulkStrings)
+
+        rdb_bytes = response_value.deserialize().split(b"\r\n")[1]
+        rdb_path = self.config["dir"].joinpath(self.config["dbfilename"])
+
+        db = DatabaseParser(rdb_path)
+        db.parse(BytesIO(rdb_bytes))
+        self.CACHE = db.redis_entries
 
     async def _server_request_handler(
         self,

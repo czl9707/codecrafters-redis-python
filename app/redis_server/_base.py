@@ -6,7 +6,7 @@ import asyncio
 
 from ._expiration_policy import ExpirationPolicy
 from ..redis_values import RedisBulkStrings, RedisValue, RedisValueReader
-
+from ._db_parser import DatabaseParser, RedisEntry
 
 Address = Tuple[str, int]
 
@@ -17,14 +17,16 @@ class ServerConfig(TypedDict, total=False):
 
 
 class RedisServer(ABC):
-    CACHE: Dict[RedisBulkStrings, "RedisEntry"]
+    CACHE: Dict[RedisBulkStrings, RedisEntry]
 
     def __init__(self, server_addr: Address, config: ServerConfig) -> None:
         self.server_addr = server_addr
         self.config = config
         self.replica_id = None
         self.replica_offset = None
-        self.CACHE = {}
+
+        db = DatabaseParser(self.config["dir"].joinpath(self.config["dbfilename"]))
+        self.CACHE = db.redis_entries
 
     @property
     @abstractmethod
@@ -62,16 +64,6 @@ class RedisServer(ABC):
 
         for key in expired:
             self.CACHE.pop(key)
-
-
-class RedisEntry:
-    def __init__(
-        self,
-        value: RedisValue,
-        expiration: Optional[datetime],
-    ) -> None:
-        self.value = value
-        self.expiration = expiration
 
 
 class ConnectionSession:

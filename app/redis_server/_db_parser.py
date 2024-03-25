@@ -66,7 +66,7 @@ class DatabaseParser:
 
     def _parse_length(self, file: io.BufferedReader) -> int:
         b = file.read(1)
-        match int.from_bytes(b) >> 6:
+        match int.from_bytes(b, "little") >> 6:
             case 0b00:
                 pass
             case 0b01:
@@ -92,7 +92,7 @@ class DatabaseParser:
             value = self._parse_string(file)
         if key in ("redis-bits", "aof-preamble", "aof-base"):
             file.read(1)
-            value = int.from_bytes(file.read(1))
+            value = int.from_bytes(file.read(1), "little")
         elif key in ("ctime", "used-mem"):
             file.read(5)
             value = None
@@ -123,7 +123,7 @@ class DatabaseParser:
         return key
 
     def _parse_expiretime(self, file: io.BufferedReader) -> None:
-        sec = int.from_bytes(file.read(4))
+        sec = int.from_bytes(file.read(4), "little")
         opcode = file.read(1)
         key: RedisBulkStrings = self._op2parser[opcode](file)
         self.redis_entries[key].expiration = datetime.now() + timedelta(seconds=sec)
@@ -131,7 +131,7 @@ class DatabaseParser:
         return key
 
     def _parse_expiretime_ms(self, file: io.BufferedReader) -> None:
-        msec = int.from_bytes(file.read(8))
+        msec = int.from_bytes(file.read(8), "little")
         opcode = file.read(1)
         key: RedisBulkStrings = self._op2parser[opcode](file)
         self.redis_entries[key].expiration = datetime.now() + timedelta(

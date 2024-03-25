@@ -131,7 +131,7 @@ class DatabaseParser:
         return key
 
     def _parse_expiretime_ms(self, file: io.BufferedReader) -> None:
-        msec = int.from_bytes(file.read(4))
+        msec = int.from_bytes(file.read(8))
         opcode = file.read(1)
         key: RedisBulkStrings = self._op2parser[opcode](file)
         self.redis_entries[key].expiration = datetime.now() + timedelta(

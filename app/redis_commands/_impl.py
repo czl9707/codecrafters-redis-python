@@ -2,6 +2,7 @@ import asyncio
 from typing import TYPE_CHECKING, AsyncGenerator, Iterator, Optional, Self, Set, cast
 from datetime import datetime, timedelta
 
+
 from ..helper import get_random_replication_id, wait_for_n_finish
 from ..redis_values import (
     RedisRDBFile,
@@ -410,3 +411,30 @@ class ConfigCommand(RedisCommand):
             s.append(RedisBulkStrings.from_value(self.get))
 
         return RedisArray.from_value(s)
+
+
+class KeysCommand(RedisCommand):
+    name = "keys"
+
+    def __init__(
+        self,
+        wildcard: str,
+    ) -> None:
+        self.wildcard = wildcard
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return KeysCommand(next(args).serialize())
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncGenerator[RedisValue, None]:
+        yield RedisArray.from_value(list(server.keys(self.wildcard)))
+
+    def as_redis_value(self) -> RedisValue:
+        return RedisArray.from_value(
+            [
+                RedisBulkStrings.from_value(self.name),
+                self.wildcard,
+            ]
+        )

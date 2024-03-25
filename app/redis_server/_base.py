@@ -1,8 +1,9 @@
-from abc import ABC, abstractmethod
-import pathlib
-from typing import Dict, Optional, Tuple, TypedDict
-from datetime import datetime
 import asyncio
+import pathlib
+import fnmatch
+from abc import ABC, abstractmethod
+from typing import Dict, Iterator, Optional, Tuple, TypedDict
+from datetime import datetime
 
 from ._expiration_policy import ExpirationPolicy
 from ..redis_values import RedisBulkStrings, RedisValue, RedisValueReader
@@ -37,7 +38,7 @@ class RedisServer(ABC):
 
     # cache operation
     def get(self, key: RedisBulkStrings) -> RedisBulkStrings:
-        self.validate_entry(key)
+        self._validate_entry(key)
         return self.CACHE[key].value
 
     def set(
@@ -51,12 +52,19 @@ class RedisServer(ABC):
             expiration=expiration,
         )
 
-    def validate_entry(self, key: RedisBulkStrings) -> None:
+    def keys(self, wildcard: str = "*") -> Iterator[RedisBulkStrings]:
+        return (
+            key
+            for key in self.CACHE.keys()
+            if fnmatch.fnmatch(key.serialize(), wildcard)
+        )
+
+    def _validate_entry(self, key: RedisBulkStrings) -> None:
         entry = self.CACHE[key]
         if ExpirationPolicy.is_expired(entry):
             self.CACHE.pop(key)
 
-    def validate_all_entries(self):
+    def _validate_all_entries(self):
         expired = []
         for key, entry in self.CACHE.items():
             if ExpirationPolicy.is_expired(entry):

@@ -1,6 +1,6 @@
 import io
 import pathlib
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, TYPE_CHECKING, Optional
 
 from ..redis_values import RedisBulkStrings, RedisValue
@@ -124,20 +124,23 @@ class DatabaseParser:
 
     def _parse_expiretime(self, file: io.BufferedReader) -> None:
         sec = int.from_bytes(file.read(4), "little")
+
         opcode = file.read(1)
         key: RedisBulkStrings = self._op2parser[opcode](file)
-        self.redis_entries[key].expiration = datetime.now() + timedelta(seconds=sec)
+        self.redis_entries[key].expiration = datetime.fromtimestamp(
+            sec, tz=timezone.utc
+        )
 
         return key
 
     def _parse_expiretime_ms(self, file: io.BufferedReader) -> None:
         msec = int.from_bytes(file.read(8), "little")
+
         opcode = file.read(1)
         key: RedisBulkStrings = self._op2parser[opcode](file)
-        self.redis_entries[key].expiration = datetime.now() + timedelta(
-            milliseconds=msec
+        self.redis_entries[key].expiration = datetime.fromtimestamp(
+            msec / 1000, tz=timezone.utc
         )
-
         return key
 
 

@@ -1,6 +1,6 @@
 import asyncio
 from typing import TYPE_CHECKING, AsyncGenerator, Iterator, Optional, Self, Set, cast
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 from ..helper import get_random_replication_id, wait_for_n_finish
@@ -112,7 +112,8 @@ class SetCommand(RedisCommand):
             (
                 None
                 if self.expiration <= 0
-                else datetime.now() + timedelta(milliseconds=self.expiration)
+                else datetime.now(tz=timezone.utc)
+                + timedelta(milliseconds=self.expiration)
             ),
         )
 

@@ -1,5 +1,5 @@
 from abc import ABC
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from ._db_parser import RedisEntry
@@ -19,6 +19,8 @@ class ExpirationPolicy(ABC):
 class EndOfLifePolicy(ExpirationPolicy):
     @staticmethod
     def is_expired(entry: RedisEntry) -> bool:
-        if entry.expiration is not None and entry.expiration < datetime.now():
+        if entry.expiration is not None and entry.expiration < datetime.now(
+            tz=timezone.utc
+        ):
             return True
         return False

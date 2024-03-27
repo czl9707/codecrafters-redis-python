@@ -146,10 +146,7 @@ class GetCommand(RedisCommand):
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
     ) -> AsyncGenerator[RedisValue, None]:
-        try:
-            yield server.get(self.key)
-        except KeyError:
-            yield RedisBulkStrings.from_value(None)
+        yield server.get(self.key)
 
     def as_redis_value(self) -> RedisValue:
         return RedisArray.from_value(
@@ -437,5 +434,29 @@ class KeysCommand(RedisCommand):
             [
                 RedisBulkStrings.from_value(self.name),
                 self.wildcard,
+            ]
+        )
+
+
+class TypeCommand(RedisCommand):
+    name = "type"
+
+    def __init__(self, key: RedisBulkStrings) -> None:
+        self.key = key
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return TypeCommand(next(args))
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncGenerator[RedisValue, None]:
+        yield RedisBulkStrings.from_value(server.get(self.key).redis_type)
+
+    def as_redis_value(self) -> RedisValue:
+        return RedisArray.from_value(
+            [
+                RedisBulkStrings.from_value(self.name),
+                self.key,
             ]
         )

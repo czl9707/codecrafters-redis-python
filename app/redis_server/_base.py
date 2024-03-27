@@ -38,6 +38,9 @@ class RedisServer(ABC):
 
     # cache operation
     def get(self, key: RedisBulkStrings) -> RedisBulkStrings:
+        if key not in self.CACHE:
+            return RedisBulkStrings.from_value(None)
+
         self._validate_entry(key)
         return self.CACHE[key].value
 

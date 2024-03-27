@@ -48,11 +48,8 @@ class DatabaseParser:
         self._check_magic_string(file)
         self._check_version(file)
 
-        opcode = file.read(1)
-        while opcode != OPCODE_EOF:
+        while (opcode := file.read(1)) != OPCODE_EOF:
             self._op2parser[opcode](file)
-
-            opcode = file.read(1)
 
     def _check_magic_string(self, file: io.BufferedReader) -> None:
         if file.read(5) != b"REDIS":

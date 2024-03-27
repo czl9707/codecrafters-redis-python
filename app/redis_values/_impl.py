@@ -22,6 +22,10 @@ class RedisSimpleString(RedisValue[str]):
             cls.symbol + value.encode(),
         ]
 
+    @property
+    def redis_type(self) -> str:
+        return "string"
+
 
 class RedisInteger(RedisValue[int]):
     symbol = b":"
@@ -40,6 +44,10 @@ class RedisInteger(RedisValue[int]):
         return [
             cls.symbol + str(value).encode(),
         ]
+
+    @property
+    def redis_type(self) -> str:
+        return "integer"
 
 
 class RedisBulkStrings(RedisValue[Optional[str]]):
@@ -93,6 +101,10 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
                 cls.symbol + b"-1",
             ]
 
+    @property
+    def redis_type(self) -> str:
+        return "string"
+
 
 class RedisArray(RedisValue[List[RedisValue]]):
     symbol = b"*"
@@ -132,6 +144,10 @@ class RedisArray(RedisValue[List[RedisValue]]):
             bytes_values.extend(v.tokens)  # type: ignore
         return bytes_values
 
+    @property
+    def redis_type(self) -> str:
+        return "list"
+
 
 # RDBFile is same as BulkStrings, but without CRLF at the end
 # should not be serialize from value to bytes
@@ -164,3 +180,7 @@ class RedisRDBFile(RedisValue[str]):
             self.tokens = self._deserialize(self.value)
 
         return CRLF.join(self.tokens)
+
+    @property
+    def redis_type(self) -> str:
+        raise NotImplemented

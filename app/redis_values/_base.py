@@ -23,9 +23,12 @@ TBase = TypeVar("TBase")
 class RedisValue(ABC, Generic[TBase]):
     _symbol2value: Dict[str, Type["RedisValue"]] = {}
     _type2value: Dict[type, Type["RedisValue"]] = {}
+
+    # child class overwrite these!
     symbol: bytes
     value_types: List[type] = []
 
+    __slots__ = ["tokens", "value"]
     tokens: Optional[List[bytes]]
     value: Optional[TBase]
 
@@ -106,6 +109,10 @@ class RedisValue(ABC, Generic[TBase]):
     @classmethod
     @abstractmethod
     def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]: ...
+
+    @property
+    @abstractmethod
+    def redis_type(self) -> str: ...
 
 
 class RedisValueReader:

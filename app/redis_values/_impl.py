@@ -103,6 +103,12 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
 
     @property
     def redis_type(self) -> str:
+        if self.value is None:
+            if self.tokens is None:
+                return "none"
+            if self.tokens is not None and self.tokens[0] == b"$-1":
+                return "none"
+
         return "string"
 
 

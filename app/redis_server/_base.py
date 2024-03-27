@@ -38,11 +38,11 @@ class RedisServer(ABC):
 
     # cache operation
     def get(self, key: RedisBulkStrings) -> RedisBulkStrings:
-        if key not in self.CACHE:
+        try:
+            self._validate_entry(key)
+            return self.CACHE[key].value
+        except KeyError:
             return RedisBulkStrings.from_value(None)
-
-        self._validate_entry(key)
-        return self.CACHE[key].value
 
     def set(
         self,
@@ -56,6 +56,7 @@ class RedisServer(ABC):
         )
 
     def keys(self, wildcard: str = "*") -> Iterator[RedisBulkStrings]:
+        self._validate_all_entries()
         return (
             key
             for key in self.CACHE.keys()

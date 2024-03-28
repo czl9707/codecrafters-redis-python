@@ -10,4 +10,5 @@ from ._impl import (
     RedisInteger,
     RedisStream,
     RedisBulkErrors,
+    RedisSimpleErrors,
 )

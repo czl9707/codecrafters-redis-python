@@ -19,7 +19,7 @@ from ..redis_values import (
     RedisBulkStrings,
     RedisInteger,
     RedisStream,
-    RedisBulkErrors,
+    RedisSimpleErrors,
 )
 from ._base import RedisCommand, write, replica_reply
 
@@ -503,9 +503,15 @@ class XaddCommand(RedisCommand):
             stream = RedisStream()
             server.set(self.key, stream)
 
-        stream.value[self.entry_id] = self.entries
+        last_entry_id = next(reversed(stream.value)) if len(stream.value) else None
+        if last_entry_id is not None and (self.entry_id <= last_entry_id):
+            yield RedisSimpleErrors.from_value(
+                "ERR The ID specified in XADD is equal or smaller than the target stream top item"
+            )
+        else:
+            stream.value[self.entry_id] = self.entries
 
-        yield RedisBulkStrings.from_value(self.entry_id.as_string())
+            yield RedisBulkStrings.from_value(self.entry_id.as_string())
 
     def as_redis_value(self) -> RedisValue:
         s = [self.key, self.entry_id]

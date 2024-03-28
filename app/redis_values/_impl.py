@@ -1,6 +1,6 @@
 import base64
-from collections import deque
-from typing import Deque, List, Never, Optional
+import collections
+from typing import Deque, Dict, List, Never, Optional, OrderedDict, NamedTuple
 
 from ._base import RedisValue, CRLF
 
@@ -135,7 +135,7 @@ class RedisArray(RedisValue[List[RedisValue]]):
         header = tokens[0]
         size = int(header.decode()[1:])
 
-        children_bytes = deque(tokens[1:])
+        children_bytes = collections.deque(tokens[1:])
         for _ in range(size):
             redis_value = RedisValue.from_bytes(children_bytes)
             children.append(redis_value)
@@ -153,6 +153,59 @@ class RedisArray(RedisValue[List[RedisValue]]):
     @property
     def redis_type(self) -> str:
         return "list"
+
+
+class RedisStream(
+    RedisValue[
+        OrderedDict[
+            "RedisStream.StreamEntryId",
+            Dict[RedisBulkStrings, RedisValue],
+        ]
+    ]
+):
+    class StreamEntryId(NamedTuple):
+        timestamp: int
+        sequence: int
+
+        @staticmethod
+        def from_string(s: str) -> "RedisStream.StreamEntryId":
+            timestamp, sequence = s.split("-")
+            return RedisStream.StreamEntryId(
+                timestamp=int(timestamp), sequence=int(sequence)
+            )
+
+        def as_string(self) -> str:
+            return f"{self.timestamp}-{self.sequence}"
+
+    value: OrderedDict[
+        "RedisStream.StreamEntryId",
+        Dict[RedisBulkStrings, RedisValue],
+    ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.value = collections.OrderedDict()
+
+    @classmethod
+    def _prepare(cls, tokens: Deque[bytes]) -> Never:
+        raise NotImplemented
+
+    @classmethod
+    def _serialize(cls, tokens: List[bytes]) -> Never:
+        raise NotImplemented
+
+    @property
+    def bytes_size(self) -> int:
+        self.value
+        raise NotImplemented
+
+    @classmethod
+    def _deserialize(cls, value: str) -> Never:
+        raise NotImplemented
+
+    @property
+    def redis_type(self) -> str:
+        return "stream"
 
 
 # RDBFile is same as BulkStrings, but without CRLF at the end

@@ -1,5 +1,15 @@
 import asyncio
-from typing import TYPE_CHECKING, AsyncGenerator, Iterator, Optional, Self, Set, cast
+from collections import OrderedDict
+from typing import (
+    TYPE_CHECKING,
+    AsyncGenerator,
+    Dict,
+    Iterator,
+    Optional,
+    Self,
+    Set,
+    cast,
+)
 from datetime import datetime, timedelta, timezone
 
 
@@ -8,8 +18,10 @@ from ..redis_values import (
     RedisRDBFile,
     RedisValue,
     RedisArray,
+    RedisSimpleString,
     RedisBulkStrings,
     RedisInteger,
+    RedisStream,
 )
 from ._base import RedisCommand, write, replica_reply
 
@@ -451,7 +463,7 @@ class TypeCommand(RedisCommand):
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
     ) -> AsyncGenerator[RedisValue, None]:
-        yield RedisBulkStrings.from_value(server.get(self.key).redis_type)
+        yield RedisSimpleString.from_value(server.get(self.key).redis_type)
 
     def as_redis_value(self) -> RedisValue:
         return RedisArray.from_value(
@@ -460,3 +472,48 @@ class TypeCommand(RedisCommand):
                 self.key,
             ]
         )
+
+
+class XaddCommand(RedisCommand):
+    name = "xadd"
+
+    def __init__(
+        self,
+        key: RedisBulkStrings,
+        entry_id: RedisStream.StreamEntryId,
+        entries: Dict[RedisBulkStrings, RedisBulkStrings],
+    ) -> None:
+        self.key = key
+        self.entry_id = entry_id
+        self.entries = entries
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        key = next(args)
+        entry_id = RedisStream.StreamEntryId.from_string(next(args).serialize())
+        entries = {}
+        for entry_key in args:
+            entries[entry_key] = next(args)
+
+        return XaddCommand(key, entry_id, entries)
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncGenerator[RedisValue, None]:
+        stream = server.get(self.key)
+        if not isinstance(stream, RedisStream):
+            stream = RedisStream()
+            server.set(self.key, stream)
+
+        stream.value[self.entry_id] = self.entries
+
+        yield RedisBulkStrings.from_value(self.entry_id.as_string())
+
+    def as_redis_value(self) -> RedisValue:
+        s = [self.key, self.entry_id]
+
+        for k, v in self.entries.items():
+            s.append(k)
+            s.append(v)
+
+        return RedisArray.from_value(s)

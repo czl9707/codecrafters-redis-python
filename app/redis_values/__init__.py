@@ -8,4 +8,5 @@ from ._impl import (
     RedisRDBFile,
     RedisSimpleString,
     RedisInteger,
+    RedisStream,
 )

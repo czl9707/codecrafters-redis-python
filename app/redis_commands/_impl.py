@@ -1,5 +1,3 @@
-import asyncio
-from collections import OrderedDict
 from typing import (
     TYPE_CHECKING,
     AsyncGenerator,
@@ -8,7 +6,6 @@ from typing import (
     Optional,
     Self,
     Set,
-    cast,
 )
 from datetime import datetime, timedelta, timezone
 
@@ -22,6 +19,7 @@ from ..redis_values import (
     RedisBulkStrings,
     RedisInteger,
     RedisStream,
+    RedisBulkErrors,
 )
 from ._base import RedisCommand, write, replica_reply
 

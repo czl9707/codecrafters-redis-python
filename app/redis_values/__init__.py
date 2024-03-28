@@ -9,4 +9,5 @@ from ._impl import (
     RedisSimpleString,
     RedisInteger,
     RedisStream,
+    RedisBulkErrors,
 )

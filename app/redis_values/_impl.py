@@ -155,6 +155,73 @@ class RedisArray(RedisValue[List[RedisValue]]):
         return "list"
 
 
+class RedisSimpleErrors(RedisValue[str]):
+    symbol = b"-"
+
+    @classmethod
+    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+        return [tokens.popleft()]
+
+    @classmethod
+    def _serialize(cls, tokens: List[bytes]) -> int:
+        return int(tokens[0].decode()[1:])
+
+    @classmethod
+    def _deserialize(cls, value: int) -> List[bytes]:
+        return [
+            cls.symbol + str(value).encode(),
+        ]
+
+    @property
+    def redis_type(self) -> str:
+        return "error"
+
+
+class RedisBulkErrors(RedisValue[str]):
+    symbol = b"!"
+
+    # same as BulkString
+    @classmethod
+    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+        header = tokens.popleft()
+        size = int(header.decode()[1:])
+
+        total_length = 0
+        string_bytes = []
+        while total_length < size:
+            s = tokens.popleft()
+            string_bytes.append(s)
+            total_length += len(s)
+
+            if total_length < size:
+                string_bytes.append(CRLF)
+            else:
+                break
+
+        bs = b"".join(string_bytes)
+        if len(bs) > size:
+            unused = bs[size:]
+            tokens.appendleft(unused)
+            s = bs[:size]
+
+        return [header, bs]
+
+    @classmethod
+    def _serialize(cls, tokens: List[bytes]) -> Optional[str]:
+        return tokens[1].decode()
+
+    @classmethod
+    def _deserialize(cls, value: str) -> List[bytes]:
+        return [
+            cls.symbol + str(len(value)).encode(),
+            value.encode(),
+        ]
+
+    @property
+    def redis_type(self) -> str:
+        return "error"
+
+
 class RedisStream(
     RedisValue[
         OrderedDict[

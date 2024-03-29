@@ -26,7 +26,7 @@ from ._base import RedisCommand, write, replica_reply
 
 EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
 
-INFINITY = 18446744073709551615
+INFINITY = (1 << 64) - 1
 
 if TYPE_CHECKING:
     from ..redis_server import (
@@ -548,12 +548,18 @@ class XrangeCommand(RedisCommand):
 
         parts = [int(s) for s in next(args).serialize().split("-")]
         if len(parts) == 1:
-            parts.append(0)
+            if parts[0] == "-":
+                parts = (0, 1)
+            else:
+                parts.append(0)
         start_entry_id = RedisStream.StreamEntryId(*parts)
 
         parts = [int(s) for s in next(args).serialize().split("-")]
         if len(parts) == 1:
-            parts.append(INFINITY)
+            if parts[0] == "+":
+                parts = (INFINITY, INFINITY)
+            else:
+                parts.append(INFINITY)
         end_entry_id = RedisStream.StreamEntryId(*parts)
 
         return XrangeCommand(key, start_entry_id, end_entry_id)

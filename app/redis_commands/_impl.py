@@ -546,19 +546,21 @@ class XrangeCommand(RedisCommand):
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         key = next(args)
 
-        parts = [int(s) for s in next(args).serialize().split("-")]
-        if len(parts) == 1:
-            if parts[0] == "-":
-                parts = (0, 1)
-            else:
+        id_string = next(args).serialize()
+        if id_string == "-":
+            parts = (0, 1)
+        else:
+            parts = [int(s) for s in id_string.split("-")]
+            if len(parts) == 1:
                 parts.append(0)
         start_entry_id = RedisStream.StreamEntryId(*parts)
 
-        parts = [int(s) for s in next(args).serialize().split("-")]
-        if len(parts) == 1:
-            if parts[0] == "+":
-                parts = (INFINITY, INFINITY)
-            else:
+        id_string = next(args).serialize()
+        if id_string == "+":
+            parts = (INFINITY, INFINITY)
+        else:
+            parts = [int(s) for s in id_string.split("-")]
+            if len(parts) == 1:
                 parts.append(INFINITY)
         end_entry_id = RedisStream.StreamEntryId(*parts)
 

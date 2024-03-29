@@ -502,23 +502,16 @@ class XaddCommand(RedisCommand):
         if not isinstance(stream, RedisStream):
             stream = RedisStream()
             server.set(self.key, stream)
-            stream.value[self.entry_id] = self.entries
 
-            yield RedisBulkStrings.from_value(self.entry_id.as_string())
+        try:
+            last_entry_id = next(reversed(stream.value)) if len(stream.value) else None
+            self.entry_id = self.entry_id.validate(last_entry_id)
+        except ValueError as e:
+            yield RedisSimpleErrors.from_value(*e.args)
             return
 
-        last_entry_id = next(reversed(stream.value)) if len(stream.value) else None
-        if self.entry_id == (0, 0):
-            yield RedisSimpleErrors.from_value(
-                "ERR The ID specified in XADD must be greater than 0-0"
-            )
-        elif self.entry_id <= last_entry_id:
-            yield RedisSimpleErrors.from_value(
-                "ERR The ID specified in XADD is equal or smaller than the target stream top item"
-            )
-        else:
-            stream.value[self.entry_id] = self.entries
-            yield RedisBulkStrings.from_value(self.entry_id.as_string())
+        stream.value[self.entry_id] = self.entries
+        yield RedisBulkStrings.from_value(self.entry_id.as_string())
 
     def as_redis_value(self) -> RedisValue:
         s = [self.key, self.entry_id]

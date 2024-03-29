@@ -1,5 +1,6 @@
 import base64
 import collections
+from datetime import datetime, timezone
 from typing import Deque, Dict, List, Never, Optional, OrderedDict, NamedTuple
 
 from ._base import RedisValue, CRLF
@@ -231,18 +232,59 @@ class RedisStream(
     ]
 ):
     class StreamEntryId(NamedTuple):
-        timestamp: int
-        sequence: int
+        timestamp: Optional[int]
+        sequence: Optional[int]
 
         @staticmethod
         def from_string(s: str) -> "RedisStream.StreamEntryId":
-            timestamp, sequence = s.split("-")
-            return RedisStream.StreamEntryId(
-                timestamp=int(timestamp), sequence=int(sequence)
-            )
+            if s == "*":
+                timestamp = sequence = None
+            else:
+                timestamp, sequence = s.split("-")
+                timestamp = int(timestamp)
+                sequence = None if sequence == "*" else int(sequence)
+            return RedisStream.StreamEntryId(timestamp, sequence)
 
         def as_string(self) -> str:
             return f"{self.timestamp}-{self.sequence}"
+
+        def validate(
+            self,
+            last_entry_id: Optional["RedisStream.StreamEntryId"],
+        ) -> "RedisStream.StreamEntryId":
+            if self == (0, 0):
+                raise ValueError(
+                    "ERR The ID specified in XADD must be greater than 0-0"
+                )
+
+            timestamp = self.timestamp
+            sequence = self.sequence
+
+            if last_entry_id is None:
+                if timestamp is None:
+                    timestamp = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+                if sequence is None:
+                    sequence = 0
+            elif timestamp is None:
+                tar_timestamp = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+                if tar_timestamp <= last_entry_id.timestamp:
+                    tar_timestamp = last_entry_id.timestamp + 1
+                timestamp = tar_timestamp
+                sequence = 0
+            elif timestamp < last_entry_id.timestamp or (
+                sequence is not None and self < last_entry_id
+            ):
+                raise ValueError(
+                    "ERR The ID specified in XADD is equal or smaller than the target stream top item"
+                )
+            elif sequence is None:
+                if timestamp > last_entry_id.timestamp:
+                    sequence = 0
+                else:  # timestamp == last_entry_id.timestamp
+                    sequence = last_entry_id.sequence + 1
+
+            assert sequence is not None and timestamp is not None
+            return RedisStream.StreamEntryId(timestamp, sequence)
 
     value: OrderedDict[
         "RedisStream.StreamEntryId",

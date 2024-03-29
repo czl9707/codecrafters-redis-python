@@ -272,7 +272,7 @@ class RedisStream(
                 timestamp = tar_timestamp
                 sequence = 0
             elif timestamp < last_entry_id.timestamp or (
-                sequence is not None and self < last_entry_id
+                sequence is not None and self <= last_entry_id
             ):
                 raise ValueError(
                     "ERR The ID specified in XADD is equal or smaller than the target stream top item"

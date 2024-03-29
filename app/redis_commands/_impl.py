@@ -3,12 +3,13 @@ from typing import (
     AsyncGenerator,
     Dict,
     Iterator,
+    List,
     Optional,
     Self,
     Set,
 )
 from datetime import datetime, timedelta, timezone
-
+from bisect import bisect_left, bisect_right
 
 from ..helper import get_random_replication_id, wait_for_n_finish
 from ..redis_values import (
@@ -25,6 +26,7 @@ from ._base import RedisCommand, write, replica_reply
 
 EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog=="
 
+INFINITY = 18446744073709551615
 
 if TYPE_CHECKING:
     from ..redis_server import (
@@ -514,10 +516,89 @@ class XaddCommand(RedisCommand):
         yield RedisBulkStrings.from_value(self.entry_id.as_string())
 
     def as_redis_value(self) -> RedisValue:
-        s = [self.key, self.entry_id]
+        s = [
+            RedisBulkStrings.from_value(self.name),
+            self.key,
+            RedisBulkStrings.from_value(self.entry_id.as_string(use_star=True)),
+        ]
 
         for k, v in self.entries.items():
             s.append(k)
             s.append(v)
+
+        return RedisArray.from_value(s)
+
+
+class XrangeCommand(RedisCommand):
+    name = "xrange"
+
+    def __init__(
+        self,
+        key: RedisBulkStrings,
+        start_entry_id: RedisStream.StreamEntryId,
+        end_entry_id: RedisStream.StreamEntryId,
+    ) -> None:
+        self.key = key
+        self.start_entry_id = start_entry_id
+        self.end_entry_id = end_entry_id
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        key = next(args)
+
+        parts = [int(s) for s in next(args).serialize().split("-")]
+        if len(parts) == 1:
+            parts.append(0)
+        start_entry_id = RedisStream.StreamEntryId(*parts)
+
+        parts = [int(s) for s in next(args).serialize().split("-")]
+        if len(parts) == 1:
+            parts.append(INFINITY)
+        end_entry_id = RedisStream.StreamEntryId(*parts)
+
+        return XrangeCommand(key, start_entry_id, end_entry_id)
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncGenerator[RedisValue, None]:
+        assert self.start_entry_id <= self.end_entry_id
+
+        stream = server.get(self.key)
+        if not isinstance(stream, RedisStream):
+            yield RedisArray.from_value([])
+            return
+
+        entries = stream.value
+        keys = list(entries.keys())
+        result_list: List[RedisArray] = []
+
+        index = bisect_left(keys, self.start_entry_id)
+        while index < len(keys) and keys[index] <= self.end_entry_id:
+            entry_id = keys[index]
+            index += 1
+
+            kvps = []
+            for k, v in entries[entry_id].items():
+                kvps.append(k)
+                kvps.append(v)
+
+            result_list.append(
+                RedisArray.from_value(
+                    [
+                        RedisBulkStrings.from_value(entry_id.as_string()),
+                        RedisArray.from_value(kvps),
+                    ]
+                )
+            )
+
+        yield RedisArray.from_value(result_list)
+
+    def as_redis_value(self) -> RedisValue:
+        s = [
+            RedisBulkStrings.from_value(self.name),
+            self.key,
+            RedisBulkStrings.from_value(self.start_entry_id.as_string()),
+            RedisBulkStrings.from_value(self.end_entry_id.as_string()),
+        ]
 
         return RedisArray.from_value(s)

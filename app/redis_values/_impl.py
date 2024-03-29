@@ -245,8 +245,21 @@ class RedisStream(
                 sequence = None if sequence == "*" else int(sequence)
             return RedisStream.StreamEntryId(timestamp, sequence)
 
-        def as_string(self) -> str:
-            return f"{self.timestamp}-{self.sequence}"
+        def as_string(self, use_star=False) -> str:
+            if not use_star:
+                assert self.timestamp is not None
+                if self.sequence is not None:
+                    return f"{self.timestamp}-{self.sequence}"
+                else:
+                    return str(self.timestamp)
+            else:
+                if self.timestamp is None:
+                    return "*"
+                else:
+                    if self.sequence is not None:
+                        return f"{self.timestamp}-{self.sequence}"
+                    else:
+                        return f"{self.timestamp}-*"
 
         def validate(
             self,

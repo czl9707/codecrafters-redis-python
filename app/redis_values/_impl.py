@@ -329,6 +329,22 @@ class RedisStream(
     def redis_type(self) -> str:
         return "stream"
 
+    def entry_as_redis_value(self, entry_id: "RedisStream.StreamEntryId") -> RedisArray:
+        values = []
+        for k, v in self.value[entry_id].items():
+            values.append(k)
+            values.append(v)
+
+        return RedisArray.from_value(
+            [
+                RedisBulkStrings.from_value(entry_id.as_string()),
+                RedisArray.from_value(values),
+            ]
+        )
+
+    def entry_ids(self) -> List["RedisStream.StreamEntryId"]:
+        return list(self.value.keys())
+
 
 # RDBFile is same as BulkStrings, but without CRLF at the end
 # should not be serialize from value to bytes

@@ -1,3 +1,4 @@
+import asyncio
 from typing import (
     TYPE_CHECKING,
     AsyncGenerator,
@@ -604,19 +605,22 @@ class XreadCommand(RedisCommand):
     def __init__(
         self,
         key_entry_pairs: Dict[RedisBulkStrings, RedisStream.StreamEntryId],
+        block: int = -1,
     ) -> None:
         self.key_entry_pairs = key_entry_pairs
+        self.block = block
 
     @staticmethod
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
         key_entry_pairs = {}
+        block = -1
 
         for arg in args:
             match arg.serialize().lower():
                 case "count":
                     raise NotImplemented
                 case "block":
-                    raise NotImplemented
+                    block = int(next(args).serialize())
                 case "streams":
                     rest = list(args)
                     for key, entry_string in zip(
@@ -628,11 +632,41 @@ class XreadCommand(RedisCommand):
                         key_entry_pairs[key] = entry_id
                     break
 
-        return XreadCommand(key_entry_pairs)
+        return XreadCommand(key_entry_pairs=key_entry_pairs, block=block)
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
     ) -> AsyncGenerator[RedisValue, None]:
+        async def wait_for_data(
+            stream: RedisStream, start_entry_id: RedisStream.StreamEntryId
+        ):
+            while True:
+                last_entry_id = (
+                    next(reversed(stream.value))
+                    if len(stream.value)
+                    else RedisStream.StreamEntryId(0, 1)
+                )
+                if last_entry_id <= start_entry_id:
+                    await asyncio.sleep(0)
+                else:
+                    return
+
+        if self.block >= 0:
+            wait_task = asyncio.gather(
+                *[
+                    wait_for_data(server.get(key), start_entry_id)
+                    for key, start_entry_id in self.key_entry_pairs.items()
+                ]
+            )
+
+            try:
+                await asyncio.wait_for(
+                    wait_task,
+                    timeout=self.block / 1000 if self.block > 0 else None,
+                )
+            except TimeoutError:
+                pass
+
         results = []
 
         for key, start_entry_id in self.key_entry_pairs.items():
@@ -649,16 +683,20 @@ class XreadCommand(RedisCommand):
                 entry_list.append(stream.entry_as_redis_value(entry_id))
                 index += 1
 
-            results.append(
-                RedisArray.from_value(
-                    [
-                        key,
-                        RedisArray.from_value(entry_list),
-                    ]
+            if entry_list:
+                results.append(
+                    RedisArray.from_value(
+                        [
+                            key,
+                            RedisArray.from_value(entry_list),
+                        ]
+                    )
                 )
-            )
 
-        yield RedisArray.from_value(results)
+        if results:
+            yield RedisArray.from_value(results)
+        else:
+            yield RedisBulkStrings.from_value(None)
 
     def as_redis_value(self) -> RedisValue:
         keys = []

@@ -37,7 +37,7 @@ class RedisServer(ABC):
     async def boot(self) -> None: ...
 
     # cache operation
-    def get(self, key: RedisBulkStrings) -> RedisBulkStrings:
+    def get(self, key: RedisBulkStrings) -> RedisValue:
         try:
             self._validate_entry(key)
             return self.CACHE[key].value

@@ -507,8 +507,7 @@ class XaddCommand(RedisCommand):
             server.set(self.key, stream)
 
         try:
-            last_entry_id = next(reversed(stream.value)) if len(stream.value) else None
-            self.entry_id = self.entry_id.validate(last_entry_id)
+            self.entry_id = self.entry_id.validate(stream.last_entry_id())
         except ValueError as e:
             yield RedisSimpleErrors.from_value(*e.args)
             return
@@ -604,15 +603,16 @@ class XreadCommand(RedisCommand):
 
     def __init__(
         self,
-        key_entry_pairs: Dict[RedisBulkStrings, RedisStream.StreamEntryId],
+        keys: List[RedisBulkStrings],
+        start_entry_strs: List[str],
         block: int = -1,
     ) -> None:
-        self.key_entry_pairs = key_entry_pairs
+        self.keys = keys
+        self.start_entry_strs = start_entry_strs
         self.block = block
 
     @staticmethod
     def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        key_entry_pairs = {}
         block = -1
 
         for arg in args:
@@ -623,16 +623,15 @@ class XreadCommand(RedisCommand):
                     block = int(next(args).serialize())
                 case "streams":
                     rest = list(args)
-                    for key, entry_string in zip(
-                        rest[: len(rest) // 2], rest[len(rest) // 2 :]
-                    ):
-                        entry_id = RedisStream.StreamEntryId.from_string(
-                            entry_string.serialize()
-                        )
-                        key_entry_pairs[key] = entry_id
+                    keys = rest[: len(rest) // 2]
+                    start_entry_strs = [v.serialize() for v in rest[len(rest) // 2 :]]
                     break
 
-        return XreadCommand(key_entry_pairs=key_entry_pairs, block=block)
+        return XreadCommand(
+            keys=keys,
+            start_entry_strs=start_entry_strs,
+            block=block,
+        )
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
@@ -641,21 +640,33 @@ class XreadCommand(RedisCommand):
             stream: RedisStream, start_entry_id: RedisStream.StreamEntryId
         ):
             while True:
+                last_entry_id = stream.last_entry_id()
                 last_entry_id = (
-                    next(reversed(stream.value))
-                    if len(stream.value)
-                    else RedisStream.StreamEntryId(0, 1)
+                    last_entry_id if last_entry_id else RedisStream.StreamEntryId(0, 1)
                 )
                 if last_entry_id <= start_entry_id:
                     await asyncio.sleep(0)
                 else:
                     return
 
+        start_entry_ids: List[RedisStream.StreamEntryId] = []
+        streams: List[RedisStream] = [server.get(key) for key in self.keys]
+        for entry_string, stream in zip(self.start_entry_strs, streams):
+            if entry_string == "$":
+                last_entry_id = stream.last_entry_id()
+                start_entry_ids.append(
+                    last_entry_id if last_entry_id else RedisStream.StreamEntryId(0, 1)
+                )
+            else:
+                start_entry_ids.append(
+                    RedisStream.StreamEntryId.from_string(entry_string)
+                )
+
         if self.block >= 0:
             wait_task = asyncio.gather(
                 *[
-                    wait_for_data(server.get(key), start_entry_id)
-                    for key, start_entry_id in self.key_entry_pairs.items()
+                    wait_for_data(stream, start_entry_id)
+                    for stream, start_entry_id in zip(streams, start_entry_ids)
                 ]
             )
 
@@ -669,17 +680,16 @@ class XreadCommand(RedisCommand):
 
         results = []
 
-        for key, start_entry_id in self.key_entry_pairs.items():
-            stream = server.get(key)
+        for stream, start_entry_id, key in zip(streams, start_entry_ids, self.keys):
             if not isinstance(stream, RedisStream):
                 results.append(RedisArray.from_value([]))
 
-            keys = stream.entry_ids()
+            all_keys = stream.entry_ids()
             entry_list: List[RedisArray] = []
 
-            index = bisect_right(keys, start_entry_id)
-            while index < len(keys):
-                entry_id = keys[index]
+            index = bisect_right(all_keys, start_entry_id)
+            while index < len(all_keys):
+                entry_id = all_keys[index]
                 entry_list.append(stream.entry_as_redis_value(entry_id))
                 index += 1
 
@@ -704,7 +714,7 @@ class XreadCommand(RedisCommand):
 
         for k, v in self.key_entry_pairs.items():
             keys.append(k)
-            entries.append(RedisBulkStrings.from_value(v.as_string()))
+            entries.append(RedisBulkStrings.from_value(v))
 
         return RedisArray.from_value(
             [

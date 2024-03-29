@@ -345,6 +345,9 @@ class RedisStream(
     def entry_ids(self) -> List["RedisStream.StreamEntryId"]:
         return list(self.value.keys())
 
+    def last_entry_id(self) -> Optional["RedisStream.StreamEntryId"]:
+        return next(reversed(self.value)) if len(self.value) else None
+
 
 # RDBFile is same as BulkStrings, but without CRLF at the end
 # should not be serialize from value to bytes

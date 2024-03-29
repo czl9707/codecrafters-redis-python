@@ -270,7 +270,7 @@ class RedisStream(
                 if tar_timestamp <= last_entry_id.timestamp:
                     tar_timestamp = last_entry_id.timestamp + 1
                 timestamp = tar_timestamp
-                sequence = 0
+                sequence = 0 if timestamp > 0 else 1
             elif timestamp < last_entry_id.timestamp or (
                 sequence is not None and self <= last_entry_id
             ):

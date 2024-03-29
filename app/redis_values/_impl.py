@@ -264,7 +264,7 @@ class RedisStream(
                 if timestamp is None:
                     timestamp = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
                 if sequence is None:
-                    sequence = 0
+                    sequence = 0 if timestamp > 0 else 1
             elif timestamp is None:
                 tar_timestamp = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
                 if tar_timestamp <= last_entry_id.timestamp:
@@ -279,7 +279,7 @@ class RedisStream(
                 )
             elif sequence is None:
                 if timestamp > last_entry_id.timestamp:
-                    sequence = 0
+                    sequence = 0 if timestamp > 0 else 1
                 else:  # timestamp == last_entry_id.timestamp
                     sequence = last_entry_id.sequence + 1
 

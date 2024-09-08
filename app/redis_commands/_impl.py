@@ -724,3 +724,38 @@ class XreadCommand(RedisCommand):
                 *entries,
             ]
         )
+
+
+
+@write
+class IncrCommand(RedisCommand):
+    name = "incr"
+
+    def __init__(
+        self,
+        key: RedisBulkStrings,
+    ) -> None:
+        self.key = key
+
+    @staticmethod
+    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+        return IncrCommand(next(args))
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncGenerator[RedisValue, None]:
+        value = server.get(self.key)
+        assert isinstance(value, RedisInteger)
+        value = RedisInteger.from_value(value.serialize() + 1)
+        
+        server.set(self.key,value,)
+        
+        yield value
+
+    def as_redis_value(self) -> RedisValue:
+        s = [
+            RedisBulkStrings.from_value(self.name),
+            self.key,
+        ]
+
+        return RedisArray.from_value(s)

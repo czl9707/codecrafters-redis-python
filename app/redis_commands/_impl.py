@@ -348,15 +348,15 @@ class WaitCommand(RedisCommand):
 
         async def _wait_for_single_replia(replica: "ReplicaRecord"):
             while True:
-                expected_offset = replica.expected_offset
-                if replica.replication_offset == expected_offset:
+                if replica.is_synced:
                     break
-
-                await replica.write(ReplConfCommand(get_ack="*").deserialize())
-                ack_response_command = RedisCommand.from_redis_value(
-                    await replica.read()
-                )
-                replica.replication_offset = ack_response_command.ack_offset
+                
+                await asyncio.sleep(0.01)
+                # await replica.write(ReplConfCommand(get_ack="*").deserialize())
+                # ack_response_command = RedisCommand.from_redis_value(
+                #     await replica.read()
+                # )
+                # replica.replication_offset = ack_response_command.ack_offset
 
         finished, _ = await wait_for_n_finish(
             [

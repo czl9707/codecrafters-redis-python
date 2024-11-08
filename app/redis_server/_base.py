@@ -5,6 +5,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, Iterator, Optional, Tuple, TypedDict
 from datetime import datetime
 
+
+from ..redis_commands import RedisCommand, ReplConfCommand
 from ._expiration_policy import ExpirationPolicy
 from ..redis_values import RedisBulkStrings, RedisValue, RedisValueReader
 from ._db_parser import DatabaseParser, RedisEntry
@@ -88,12 +90,10 @@ class ConnectionSession:
             reader = RedisValueReader(reader)
         self.reader = reader
         self.writer = writer
-        self._replica_record = None
+        self._replica_record = ReplicaRecord(self.reader, self.writer)
 
     @property
     def replica_record(self) -> "ReplicaRecord":
-        if self._replica_record is None:
-            self._replica_record = ReplicaRecord(self.reader, self.writer)
         return self._replica_record
 
 
@@ -109,35 +109,46 @@ class ReplicaRecord:
         self.reader = reader
         self.writer = writer
         self.replication_id = None
-        self.replication_offset = None
+        self.replication_offset = 0
         self.listening_port = None
         self.capabilities = set()
         self.expected_offset = 0
+        
+        self.is_synced = False
 
     async def write(self, b: bytes):
         self.writer.write(b)
         await self.writer.drain()
         self.expected_offset += len(b)
+        self.is_synced = False
 
     async def read(self) -> RedisValue:
         return await self.reader.read()
 
     async def heart_beat(self) -> None:
+        repl_conf_command = ReplConfCommand(get_ack="*")
+        repl_conf_command_size = len(repl_conf_command.deserialize())
+        
         try:
             while True:
                 # place holder for now
-                await asyncio.sleep(10)
-                # await asyncio.sleep(1)
+                # await asyncio.sleep(10)
+                await asyncio.sleep(0.1)
+                if self.is_synced:
+                    continue
+                
+                print(self.expected_offset, self.replication_offset)
 
-                # await self.write(ReplConfCommand(get_ack="*").deserialize())
+                await self.write(repl_conf_command.deserialize())
+                ack_response_command = RedisCommand.from_redis_value(
+                    await self.read()
+                )
+                assert isinstance(ack_response_command, ReplConfCommand)
+                assert ack_response_command.ack_offset >= self.replication_offset
 
-                # ack_response_command = RedisCommand.from_redis_value(
-                #     await self.read()
-                # )
-
-                # assert isinstance(ack_response_command, ReplConfCommand)
-                # assert ack_response_command.ack_offset >= self.replication_offset
-                # self.replication_offset = ack_response_command.ack_offset
+                self.replication_offset = ack_response_command.ack_offset
+                if self.expected_offset - self.replication_offset == repl_conf_command_size:
+                    self.is_synced = True
         except Exception as e:
             print(f"replica closed: {e}")
             self.writer.close()

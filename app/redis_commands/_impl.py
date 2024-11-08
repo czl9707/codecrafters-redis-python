@@ -746,13 +746,14 @@ class IncrCommand(RedisCommand):
         self, server: "RedisServer", session: "ConnectionSession"
     ) -> AsyncIterator[RedisValue]:
         value = server.get(self.key)
-        if isinstance(value, RedisBulkStrings) and value.value is None:
+
+        if isinstance(value, RedisBulkStrings) and value.serialize() is None:
             value = RedisBulkStrings.from_value("1")
-        elif isinstance(value, RedisBulkStrings) and value.value.isnumeric():
-            value = RedisBulkStrings.from_value(str(int(value.value) + 1))
+        elif isinstance(value, RedisBulkStrings) and value.serialize().isnumeric():
+            value = RedisBulkStrings.from_value(str(int(value.serialize()) + 1))
         
         server.set(self.key, value)
-        yield RedisInteger.from_value(int(value.value))
+        yield RedisInteger.from_value(int(value.serialize()))
 
     def as_redis_value(self) -> RedisValue:
         s = [

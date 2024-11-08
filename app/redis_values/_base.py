@@ -30,12 +30,12 @@ class RedisValue(ABC, Generic[TBase]):
     value_types: List[type] = []
 
     __slots__ = ["tokens", "value"]
-    tokens: List[bytes]
-    value: TBase
+    tokens: Optional[List[bytes]]
+    value: Optional[TBase]
 
     def __init__(self) -> None:
-        self.tokens = None # type: ignore
-        self.value = None # type: ignore
+        self.tokens = None
+        self.value = None
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.serialize()})"

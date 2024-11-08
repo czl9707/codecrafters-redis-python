@@ -83,6 +83,9 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
 
     @classmethod
     def _serialize(cls, tokens: list[bytes]) -> Optional[str]:
+        if not tokens:
+            return None
+        
         header = tokens[0]
         size = int(header.decode()[1:])
         if size < 0:

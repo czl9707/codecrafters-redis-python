@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from bisect import bisect_left, bisect_right
 
 from helper import get_random_replication_id, wait_for_n_finish
-from redis_values import (
+from ..redis_values import (
     RedisRDBFile,
     RedisValue,
     RedisArray,
@@ -29,13 +29,13 @@ EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8
 INFINITY = (1 << 64) - 1
 
 if TYPE_CHECKING:
-    from redis_server import (
+    from ..redis_server import (
         RedisServer,
         MasterServer,
         ReplicaServer,
         ConnectionSession,
     )
-    from redis_server._base import ReplicaRecord
+    from ..redis_server._base import ReplicaRecord
 
 
 class PingCommand(RedisCommand):

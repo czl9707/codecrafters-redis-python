@@ -2,7 +2,7 @@ import argparse
 import asyncio
 import pathlib
 
-from redis_server import MasterServer, ReplicaServer, ServerConfig, RedisServer
+from .redis_server import MasterServer, ReplicaServer, ServerConfig, RedisServer
 
 
 async def main() -> None:

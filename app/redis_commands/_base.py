@@ -1,14 +1,14 @@
 from typing import TYPE_CHECKING, Iterator, Self, Type, AsyncIterator
 from abc import ABC, abstractmethod
 
-from redis_values import (
+from ..redis_values import (
     RedisValue,
     RedisArray,
     RedisBulkStrings,
 )
 
 if TYPE_CHECKING:
-    from redis_server import RedisServer, ConnectionSession
+    from ..redis_server import RedisServer, ConnectionSession
 
 
 class RedisCommand(ABC):

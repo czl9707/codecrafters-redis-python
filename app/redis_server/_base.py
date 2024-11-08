@@ -6,7 +6,7 @@ from typing import Dict, Iterator, Optional, Tuple, TypedDict
 from datetime import datetime
 
 from ._expiration_policy import ExpirationPolicy
-from redis_values import RedisBulkStrings, RedisValue, RedisValueReader
+from ..redis_values import RedisBulkStrings, RedisValue, RedisValueReader
 from ._db_parser import DatabaseParser, RedisEntry
 
 Address = Tuple[str, int]

@@ -147,7 +147,7 @@ class ReplicaRecord:
                 assert ack_response_command.ack_offset >= self.replication_offset
 
                 self.replication_offset = ack_response_command.ack_offset
-                if self.expected_offset - self.replication_offset == repl_conf_command_size:
+                if (self.expected_offset - self.replication_offset) == repl_conf_command_size:
                     self.is_synced = True
         except Exception as e:
             print(f"replica closed: {e}")

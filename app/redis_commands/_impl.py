@@ -352,11 +352,6 @@ class WaitCommand(RedisCommand):
                     break
                 
                 await asyncio.sleep(0.01)
-                # await replica.write(ReplConfCommand(get_ack="*").deserialize())
-                # ack_response_command = RedisCommand.from_redis_value(
-                #     await replica.read()
-                # )
-                # replica.replication_offset = ack_response_command.ack_offset
 
         finished, _ = await wait_for_n_finish(
             [

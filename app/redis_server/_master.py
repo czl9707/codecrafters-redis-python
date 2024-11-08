@@ -63,7 +63,7 @@ class MasterServer(RedisServer):
                     ]
 
                 async for response_value in command.execute(self, session):
-                    # print(f"sending response {response_value}")
+                    print(f"sending response {response_value}")
                     writer.write(response_value.deserialize())
                     await writer.drain()
 

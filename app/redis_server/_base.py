@@ -137,8 +137,6 @@ class ReplicaRecord:
                 if self.is_synced:
                     continue
                 
-                print(self.expected_offset, self.replication_offset)
-
                 await self.write(repl_conf_command.deserialize())
                 ack_response_command = RedisCommand.from_redis_value(
                     await self.read()

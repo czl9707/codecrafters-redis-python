@@ -11,7 +11,7 @@ from typing import (
 from datetime import datetime, timedelta, timezone
 from bisect import bisect_left, bisect_right
 
-from helper import get_random_replication_id, wait_for_n_finish
+from ..helper import get_random_replication_id, wait_for_n_finish
 from ..redis_values import (
     RedisRDBFile,
     RedisValue,

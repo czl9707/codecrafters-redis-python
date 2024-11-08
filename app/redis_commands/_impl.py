@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 
 class PingCommand(RedisCommand):
-    name = "ping"
+    name = "PING"
 
     @classmethod
     def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
@@ -59,7 +59,7 @@ class PingCommand(RedisCommand):
 
 
 class EchoCommand(RedisCommand):
-    name = "echo"
+    name = "ECHO"
 
     def __init__(self, content: RedisBulkStrings) -> None:
         self.content = content
@@ -84,7 +84,7 @@ class EchoCommand(RedisCommand):
 
 @write
 class SetCommand(RedisCommand):
-    name = "set"
+    name = "SET"
 
     def __init__(
         self,
@@ -146,7 +146,7 @@ class SetCommand(RedisCommand):
 
 
 class GetCommand(RedisCommand):
-    name = "get"
+    name = "GET"
 
     def __init__(self, key: RedisBulkStrings) -> None:
         self.key = key
@@ -170,7 +170,7 @@ class GetCommand(RedisCommand):
 
 
 class InfoCommand(RedisCommand):
-    name = "info"
+    name = "INFO"
 
     def __init__(self, arg: str) -> None:
         self.arg = arg
@@ -208,7 +208,7 @@ class InfoCommand(RedisCommand):
 
 @replica_reply
 class ReplConfCommand(RedisCommand):
-    name = "replconf"
+    name = "REPLCONF"
 
     def __init__(
         self,
@@ -283,7 +283,7 @@ class ReplConfCommand(RedisCommand):
 
 
 class PsyncCommand(RedisCommand):
-    name = "psync"
+    name = "PSYNC"
 
     def __init__(
         self,
@@ -327,7 +327,7 @@ class PsyncCommand(RedisCommand):
 
 
 class WaitCommand(RedisCommand):
-    name = "wait"
+    name = "WAIT"
 
     def __init__(
         self,
@@ -380,7 +380,7 @@ class WaitCommand(RedisCommand):
 
 
 class ConfigCommand(RedisCommand):
-    name = "config"
+    name = "CONFIG"
 
     def __init__(
         self,
@@ -424,7 +424,7 @@ class ConfigCommand(RedisCommand):
 
 
 class KeysCommand(RedisCommand):
-    name = "keys"
+    name = "KEYS"
 
     def __init__(
         self,
@@ -451,7 +451,7 @@ class KeysCommand(RedisCommand):
 
 
 class TypeCommand(RedisCommand):
-    name = "type"
+    name = "TYPE"
 
     def __init__(self, key: RedisBulkStrings) -> None:
         self.key = key
@@ -475,7 +475,7 @@ class TypeCommand(RedisCommand):
 
 
 class XaddCommand(RedisCommand):
-    name = "xadd"
+    name = "XADD"
 
     def __init__(
         self,
@@ -529,7 +529,7 @@ class XaddCommand(RedisCommand):
 
 
 class XrangeCommand(RedisCommand):
-    name = "xrange"
+    name = "XRANGE"
 
     def __init__(
         self,
@@ -576,7 +576,7 @@ class XrangeCommand(RedisCommand):
             return
 
         keys = stream.entry_ids()
-        result_list: List[RedisArray] = []
+        result_list: list[RedisArray] = []
 
         index = bisect_left(keys, self.start_entry_id)
         while index < len(keys) and keys[index] <= self.end_entry_id:
@@ -598,7 +598,7 @@ class XrangeCommand(RedisCommand):
 
 
 class XreadCommand(RedisCommand):
-    name = "xread"
+    name = "XREAD"
 
     def __init__(
         self,
@@ -648,8 +648,8 @@ class XreadCommand(RedisCommand):
                 else:
                     return
 
-        start_entry_ids: List[RedisStream.StreamEntryId] = []
-        streams: List[RedisStream] = [server.get(key) for key in self.keys]
+        start_entry_ids: list[RedisStream.StreamEntryId] = []
+        streams: list[RedisStream] = [server.get(key) for key in self.keys]
         for entry_string, stream in zip(self.start_entry_strs, streams):
             if entry_string == "$":
                 last_entry_id = stream.last_entry_id()
@@ -684,7 +684,7 @@ class XreadCommand(RedisCommand):
                 results.append(RedisArray.from_value([]))
 
             all_keys = stream.entry_ids()
-            entry_list: List[RedisArray] = []
+            entry_list: list[RedisArray] = []
 
             index = bisect_right(all_keys, start_entry_id)
             while index < len(all_keys):
@@ -730,7 +730,7 @@ class XreadCommand(RedisCommand):
 
 @write
 class IncrCommand(RedisCommand):
-    name = "incr"
+    name = "INCR"
 
     def __init__(
         self,

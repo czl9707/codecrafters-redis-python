@@ -25,8 +25,8 @@ class RedisCommand(ABC):
         for v in redis_value.serialize():
             assert isinstance(v, RedisBulkStrings)
 
-        it = iter(redis_value.value) # type: ignore
-        name: str = next(it).serialize().lower()
+        it: Iterator[RedisBulkStrings] = iter(redis_value.value) # type: ignore
+        name: str = next(it).serialize().upper()
         CommandType = RedisCommand._name2command[name]
 
         return CommandType.from_redis_value_iter(it)

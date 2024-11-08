@@ -1,7 +1,7 @@
 import base64
 import collections
 from datetime import datetime, timezone
-from typing import Deque, Dict, List, Never, Optional, OrderedDict, NamedTuple
+from typing import Deque, Never, Optional, OrderedDict, NamedTuple
 
 from ._base import RedisValue, CRLF
 
@@ -10,15 +10,15 @@ class RedisSimpleString(RedisValue[str]):
     symbol = b"+"
 
     @classmethod
-    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+    def _prepare(cls, tokens: Deque[bytes]) -> list[bytes]:
         return [tokens.popleft()]
 
     @classmethod
-    def _serialize(cls, tokens: List[bytes]) -> str:
+    def _serialize(cls, tokens: list[bytes]) -> str:
         return tokens[0].decode()[1:]
 
     @classmethod
-    def _deserialize(cls, value: str) -> List[bytes]:
+    def _deserialize(cls, value: str) -> list[bytes]:
         return [
             cls.symbol + value.encode(),
         ]
@@ -33,15 +33,15 @@ class RedisInteger(RedisValue[int]):
     value_types = [int]
 
     @classmethod
-    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+    def _prepare(cls, tokens: Deque[bytes]) -> list[bytes]:
         return [tokens.popleft()]
 
     @classmethod
-    def _serialize(cls, tokens: List[bytes]) -> int:
+    def _serialize(cls, tokens: list[bytes]) -> int:
         return int(tokens[0].decode()[1:])
 
     @classmethod
-    def _deserialize(cls, value: int) -> List[bytes]:
+    def _deserialize(cls, value: int) -> list[bytes]:
         return [
             cls.symbol + str(value).encode(),
         ]
@@ -57,7 +57,7 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
 
     # RDB file will go into this catalog when inbound
     @classmethod
-    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+    def _prepare(cls, tokens: Deque[bytes]) -> list[bytes]:
         header = tokens.popleft()
         size = int(header.decode()[1:])
 
@@ -82,7 +82,7 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
         return [header, bs]
 
     @classmethod
-    def _serialize(cls, tokens: List[bytes]) -> Optional[str]:
+    def _serialize(cls, tokens: list[bytes]) -> Optional[str]:
         header = tokens[0]
         size = int(header.decode()[1:])
         if size < 0:
@@ -91,7 +91,7 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
         return tokens[1].decode()
 
     @classmethod
-    def _deserialize(cls, value: str) -> List[bytes]:
+    def _deserialize(cls, value: Optional[str]) -> list[bytes]:
         if value is not None:
             return [
                 cls.symbol + str(len(value)).encode(),
@@ -113,12 +113,12 @@ class RedisBulkStrings(RedisValue[Optional[str]]):
         return "string"
 
 
-class RedisArray(RedisValue[List[RedisValue]]):
+class RedisArray(RedisValue[list[RedisValue]]):
     symbol = b"*"
     value_types = [list]
 
     @classmethod
-    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+    def _prepare(cls, tokens: Deque[bytes]) -> list[bytes]:
         header = tokens.popleft()
         size = int(header.decode()[1:])
 
@@ -130,8 +130,8 @@ class RedisArray(RedisValue[List[RedisValue]]):
         return values
 
     @classmethod
-    def _serialize(cls, tokens: List[bytes]) -> List[RedisValue]:
-        children: List[RedisValue] = []
+    def _serialize(cls, tokens: list[bytes]) -> list[RedisValue]:
+        children: list[RedisValue] = []
 
         header = tokens[0]
         size = int(header.decode()[1:])
@@ -144,7 +144,7 @@ class RedisArray(RedisValue[List[RedisValue]]):
         return children
 
     @classmethod
-    def _deserialize(cls, value: List[RedisValue]) -> List[bytes]:
+    def _deserialize(cls, value: list[RedisValue]) -> list[bytes]:
         bytes_values = [cls.symbol + str(len(value)).encode()]
         for v in value:
             v.deserialize()  # ensure value get .tokens
@@ -160,17 +160,17 @@ class RedisSimpleErrors(RedisValue[str]):
     symbol = b"-"
 
     @classmethod
-    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+    def _prepare(cls, tokens: Deque[bytes]) -> list[bytes]:
         return [tokens.popleft()]
 
     @classmethod
-    def _serialize(cls, tokens: List[bytes]) -> int:
-        return int(tokens[0].decode()[1:])
+    def _serialize(cls, tokens: list[bytes]) -> str:
+        return tokens[0].decode()[1:]
 
     @classmethod
-    def _deserialize(cls, value: int) -> List[bytes]:
+    def _deserialize(cls, value: str) -> list[bytes]:
         return [
-            cls.symbol + str(value).encode(),
+            cls.symbol + value.encode(),
         ]
 
     @property
@@ -183,7 +183,7 @@ class RedisBulkErrors(RedisValue[str]):
 
     # same as BulkString
     @classmethod
-    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+    def _prepare(cls, tokens: Deque[bytes]) -> list[bytes]:
         header = tokens.popleft()
         size = int(header.decode()[1:])
 
@@ -208,11 +208,11 @@ class RedisBulkErrors(RedisValue[str]):
         return [header, bs]
 
     @classmethod
-    def _serialize(cls, tokens: List[bytes]) -> Optional[str]:
+    def _serialize(cls, tokens: list[bytes]) -> str:
         return tokens[1].decode()
 
     @classmethod
-    def _deserialize(cls, value: str) -> List[bytes]:
+    def _deserialize(cls, value: str) -> list[bytes]:
         return [
             cls.symbol + str(len(value)).encode(),
             value.encode(),
@@ -227,7 +227,7 @@ class RedisStream(
     RedisValue[
         OrderedDict[
             "RedisStream.StreamEntryId",
-            Dict[RedisBulkStrings, RedisValue],
+            dict[RedisBulkStrings, RedisValue],
         ]
     ]
 ):
@@ -240,9 +240,9 @@ class RedisStream(
             if s == "*":
                 timestamp = sequence = None
             else:
-                timestamp, sequence = s.split("-")
-                timestamp = int(timestamp)
-                sequence = None if sequence == "*" else int(sequence)
+                timestampStr, sequenceStr = s.split("-")
+                timestamp = int(timestampStr)
+                sequence = None if sequenceStr == "*" else int(sequenceStr)
             return RedisStream.StreamEntryId(timestamp, sequence)
 
         def as_string(self, use_star=False) -> str:
@@ -301,7 +301,7 @@ class RedisStream(
 
     value: OrderedDict[
         "RedisStream.StreamEntryId",
-        Dict[RedisBulkStrings, RedisValue],
+        dict[RedisBulkStrings, RedisValue],
     ]
 
     def __init__(self) -> None:
@@ -313,7 +313,7 @@ class RedisStream(
         raise NotImplemented
 
     @classmethod
-    def _serialize(cls, tokens: List[bytes]) -> Never:
+    def _serialize(cls, tokens: list[bytes]) -> Never:
         raise NotImplemented
 
     @property
@@ -330,7 +330,7 @@ class RedisStream(
         return "stream"
 
     def entry_as_redis_value(self, entry_id: "RedisStream.StreamEntryId") -> RedisArray:
-        values = []
+        values:list[RedisValue] = []
         for k, v in self.value[entry_id].items():
             values.append(k)
             values.append(v)
@@ -342,7 +342,7 @@ class RedisStream(
             ]
         )
 
-    def entry_ids(self) -> List["RedisStream.StreamEntryId"]:
+    def entry_ids(self) -> list["RedisStream.StreamEntryId"]:
         return list(self.value.keys())
 
     def last_entry_id(self) -> Optional["RedisStream.StreamEntryId"]:
@@ -353,11 +353,11 @@ class RedisStream(
 # should not be serialize from value to bytes
 class RedisRDBFile(RedisValue[str]):
     @classmethod
-    def _prepare(cls, tokens: Deque[bytes]) -> List[bytes]:
+    def _prepare(cls, tokens: Deque[bytes]) -> list[bytes]:
         raise NotImplemented
 
     @classmethod
-    def _serialize(cls, tokens: List[bytes]) -> Never:
+    def _serialize(cls, tokens: list[bytes]) -> Never:
         raise NotImplemented
 
     @property
@@ -367,7 +367,7 @@ class RedisRDBFile(RedisValue[str]):
         return sum(len(t) for t in self.tokens) + len(CRLF)
 
     @classmethod
-    def _deserialize(cls, value: str) -> List[bytes]:
+    def _deserialize(cls, value: str) -> list[bytes]:
         bytes_value = base64.b64decode(value)
 
         return [

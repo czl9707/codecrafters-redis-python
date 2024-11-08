@@ -1,19 +1,18 @@
 import asyncio
 from typing import (
     TYPE_CHECKING,
-    AsyncGenerator,
-    Dict,
+    AsyncIterator,
     Iterator,
-    List,
     Optional,
     Self,
     Set,
+    Type,
 )
 from datetime import datetime, timedelta, timezone
 from bisect import bisect_left, bisect_right
 
-from ..helper import get_random_replication_id, wait_for_n_finish
-from ..redis_values import (
+from helper import get_random_replication_id, wait_for_n_finish
+from redis_values import (
     RedisRDBFile,
     RedisValue,
     RedisArray,
@@ -30,25 +29,25 @@ EMPTYRDB = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8
 INFINITY = (1 << 64) - 1
 
 if TYPE_CHECKING:
-    from ..redis_server import (
+    from redis_server import (
         RedisServer,
         MasterServer,
         ReplicaServer,
         ConnectionSession,
     )
-    from ..redis_server._base import ReplicaRecord
+    from redis_server._base import ReplicaRecord
 
 
 class PingCommand(RedisCommand):
     name = "ping"
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return PingCommand()
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls()
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         yield RedisBulkStrings.from_value("PONG")
 
     def as_redis_value(self) -> RedisValue:
@@ -65,13 +64,13 @@ class EchoCommand(RedisCommand):
     def __init__(self, content: RedisBulkStrings) -> None:
         self.content = content
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return EchoCommand(next(args))
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls(next(args))
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         yield self.content
 
     def as_redis_value(self) -> RedisValue:
@@ -97,28 +96,28 @@ class SetCommand(RedisCommand):
         self.value = value
         self.expiration = expiration
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
         kwargs = {}
         kwargs["key"] = next(args)
         kwargs["value"] = next(args)
 
         for arg in args:
-            match arg.serialize().lower():
+            match arg.serialize().lower(): # type: ignore
                 case "px":
-                    expire_ms = int(next(args).serialize())
+                    expire_ms = int(next(args).serialize()) # type: ignore
                     kwargs["expiration"] = expire_ms
                 case "p":
-                    expire_s = int(next(args).serialize())
+                    expire_s = int(next(args).serialize()) # type: ignore
                     kwargs["expiration"] = expire_s * 1000
                 case _:
                     raise Exception(f"Unknown arg: {arg.serialize()}")
 
-        return SetCommand(**kwargs)
+        return cls(**kwargs)
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         server.set(
             self.key,
             self.value,
@@ -152,13 +151,13 @@ class GetCommand(RedisCommand):
     def __init__(self, key: RedisBulkStrings) -> None:
         self.key = key
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return GetCommand(next(args))
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls(next(args))
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         yield server.get(self.key)
 
     def as_redis_value(self) -> RedisValue:
@@ -176,13 +175,13 @@ class InfoCommand(RedisCommand):
     def __init__(self, arg: str) -> None:
         self.arg = arg
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return InfoCommand(next(args).serialize().lower())
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls(next(args).serialize().lower()) # type: ignore
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         if self.arg == "replication":
             pairs = {}
             if server.is_master:
@@ -202,7 +201,7 @@ class InfoCommand(RedisCommand):
         return RedisArray.from_value(
             [
                 RedisBulkStrings.from_value(self.name),
-                self.arg,
+                RedisBulkStrings.from_value(self.arg),
             ]
         )
 
@@ -223,16 +222,16 @@ class ReplConfCommand(RedisCommand):
         self.get_ack = get_ack
         self.ack_offset = ack
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
         kwargs = {
             "capabilities": set(),
         }
 
         for arg in args:
-            match arg.serialize().lower():
+            match arg.serialize().lower(): # type: ignore
                 case "listening-port":
-                    port = int(next(args).serialize())
+                    port = int(next(args).serialize()) # type: ignore
                     kwargs["listening_port"] = port
                 case "capa":
                     capa = next(args).serialize()
@@ -241,16 +240,16 @@ class ReplConfCommand(RedisCommand):
                     get_ack_string = next(args).serialize()
                     kwargs["get_ack"] = get_ack_string
                 case "ack":
-                    offset = int(next(args).serialize())
+                    offset = int(next(args).serialize()) # type: ignore
                     kwargs["ack"] = offset
                 case _:
                     raise AttributeError(f"Unexpected Value {arg.serialize().lower()}")
 
-        return ReplConfCommand(**kwargs)
+        return cls(**kwargs)
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         if self.capabilities or self.listening_port:
             assert server.is_master
 
@@ -294,13 +293,13 @@ class PsyncCommand(RedisCommand):
         self.replication_id = replication_id
         self.replication_offset = replication_offset
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return PsyncCommand(next(args).serialize(), int(next(args).serialize()))
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls(next(args).serialize(), int(next(args).serialize())) # type: ignore
 
     async def execute(
-        self, server: "MasterServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+        self, server: "MasterServer", session: "ConnectionSession"  # type: ignore
+    ) -> AsyncIterator[RedisValue]:
         assert server.is_master
 
         replication_id = get_random_replication_id()
@@ -338,13 +337,13 @@ class WaitCommand(RedisCommand):
         self.replica_num = replica_num
         self.timeout = timeout
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return WaitCommand(int(next(args).serialize()), int(next(args).serialize()))
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls(int(next(args).serialize()), int(next(args).serialize())) # type: ignore
 
     async def execute(
         self, server: "MasterServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         assert server.is_master
 
         async def _wait_for_single_replia(replica: "ReplicaRecord"):
@@ -389,23 +388,23 @@ class ConfigCommand(RedisCommand):
     ) -> None:
         self.get = get
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
         kwargs = {}
 
         for arg in args:
-            match arg.serialize().lower():
+            match arg.serialize().lower(): # type: ignore
                 case "get":
                     name = next(args).serialize()
                     kwargs["get"] = name
                 case _:
-                    raise AttributeError(f"Unexpected Value {arg.serialize().lower()}")
+                    raise AttributeError(f"Unexpected Value {arg.serialize().lower()}") # type: ignore
 
-        return ConfigCommand(**kwargs)
+        return cls(**kwargs)
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         if self.get:
             yield RedisArray.from_value(
                 [
@@ -433,13 +432,13 @@ class KeysCommand(RedisCommand):
     ) -> None:
         self.wildcard = wildcard
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return KeysCommand(next(args).serialize())
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls(next(args).serialize())
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         yield RedisArray.from_value(list(server.keys(self.wildcard)))
 
     def as_redis_value(self) -> RedisValue:
@@ -457,13 +456,13 @@ class TypeCommand(RedisCommand):
     def __init__(self, key: RedisBulkStrings) -> None:
         self.key = key
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return TypeCommand(next(args))
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls(next(args))
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         yield RedisSimpleString.from_value(server.get(self.key).redis_type)
 
     def as_redis_value(self) -> RedisValue:
@@ -482,25 +481,25 @@ class XaddCommand(RedisCommand):
         self,
         key: RedisBulkStrings,
         entry_id: RedisStream.StreamEntryId,
-        entries: Dict[RedisBulkStrings, RedisBulkStrings],
+        entries: dict[RedisBulkStrings, RedisBulkStrings],
     ) -> None:
         self.key = key
         self.entry_id = entry_id
         self.entries = entries
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
         key = next(args)
-        entry_id = RedisStream.StreamEntryId.from_string(next(args).serialize())
+        entry_id = RedisStream.StreamEntryId.from_string(next(args).serialize()) # type: ignore
         entries = {}
         for entry_key in args:
             entries[entry_key] = next(args)
 
-        return XaddCommand(key, entry_id, entries)
+        return cls(key, entry_id, entries)
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         stream = server.get(self.key)
         if not isinstance(stream, RedisStream):
             stream = RedisStream()
@@ -542,8 +541,8 @@ class XrangeCommand(RedisCommand):
         self.start_entry_id = start_entry_id
         self.end_entry_id = end_entry_id
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
         key = next(args)
 
         id_string = next(args).serialize()
@@ -564,11 +563,11 @@ class XrangeCommand(RedisCommand):
                 parts.append(INFINITY)
         end_entry_id = RedisStream.StreamEntryId(*parts)
 
-        return XrangeCommand(key, start_entry_id, end_entry_id)
+        return cls(key, start_entry_id, end_entry_id)
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         assert self.start_entry_id <= self.end_entry_id
 
         stream = server.get(self.key)
@@ -603,16 +602,16 @@ class XreadCommand(RedisCommand):
 
     def __init__(
         self,
-        keys: List[RedisBulkStrings],
-        start_entry_strs: List[str],
+        keys: list[RedisBulkStrings],
+        start_entry_strs: list[str],
         block: int = -1,
     ) -> None:
         self.keys = keys
         self.start_entry_strs = start_entry_strs
         self.block = block
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
         block = -1
 
         for arg in args:
@@ -627,15 +626,15 @@ class XreadCommand(RedisCommand):
                     start_entry_strs = [v.serialize() for v in rest[len(rest) // 2 :]]
                     break
 
-        return XreadCommand(
+        return cls(
             keys=keys,
-            start_entry_strs=start_entry_strs,
+            start_entry_strs=start_entry_strs, # type: ignore
             block=block,
         )
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         async def wait_for_data(
             stream: RedisStream, start_entry_id: RedisStream.StreamEntryId
         ):
@@ -708,22 +707,24 @@ class XreadCommand(RedisCommand):
         else:
             yield RedisBulkStrings.from_value(None)
 
-    def as_redis_value(self) -> RedisValue:
-        keys = []
-        entries = []
+    def as_redis_value(self) -> RedisValue: # type: ignore
+        pass
+        # TODO: not implemented properly
+        # keys = []
+        # entries = []
 
-        for k, v in self.key_entry_pairs.items():
-            keys.append(k)
-            entries.append(RedisBulkStrings.from_value(v))
+        # for k, v in self.key_entry_pairs.items():
+        #     keys.append(k)
+        #     entries.append(RedisBulkStrings.from_value(v))
 
-        return RedisArray.from_value(
-            [
-                RedisBulkStrings.from_value(self.name),
-                RedisBulkStrings.from_value("STREAMS"),
-                *keys,
-                *entries,
-            ]
-        )
+        # return RedisArray.from_value(
+        #     [
+        #         RedisBulkStrings.from_value(self.name),
+        #         RedisBulkStrings.from_value("STREAMS"),
+        #         *keys,
+        #         *entries,
+        #     ]
+        # )
 
 
 
@@ -737,13 +738,13 @@ class IncrCommand(RedisCommand):
     ) -> None:
         self.key = key
 
-    @staticmethod
-    def from_redis_value(args: Iterator[RedisBulkStrings]) -> Self:
-        return IncrCommand(next(args))
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls(next(args))
 
     async def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]:
+    ) -> AsyncIterator[RedisValue]:
         value = server.get(self.key)
         assert isinstance(value, RedisInteger)
         value = RedisInteger.from_value(value.serialize() + 1)
@@ -758,4 +759,4 @@ class IncrCommand(RedisCommand):
             self.key,
         ]
 
-        return RedisArray.from_value(s)
+        return RedisArray.from_value(s) 

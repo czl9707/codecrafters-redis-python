@@ -1,18 +1,18 @@
-from typing import TYPE_CHECKING, Dict, Type, AsyncGenerator
+from typing import TYPE_CHECKING, Iterator, Self, Type, AsyncIterator
 from abc import ABC, abstractmethod
 
-from ..redis_values import (
+from redis_values import (
     RedisValue,
     RedisArray,
     RedisBulkStrings,
 )
 
 if TYPE_CHECKING:
-    from ..redis_server import RedisServer, ConnectionSession
+    from redis_server import RedisServer, ConnectionSession
 
 
 class RedisCommand(ABC):
-    _name2command: Dict[str, Type["RedisCommand"]] = {}
+    _name2command: dict[str, Type["RedisCommand"]] = {}
 
     name: str
 
@@ -20,22 +20,26 @@ class RedisCommand(ABC):
         return self.as_redis_value().deserialize()
 
     @staticmethod
-    @abstractmethod
     def from_redis_value(redis_value: RedisArray) -> "RedisCommand":
         assert isinstance(redis_value, RedisArray)
         for v in redis_value.serialize():
             assert isinstance(v, RedisBulkStrings)
 
-        it = iter(redis_value.value)
+        it = iter(redis_value.value) # type: ignore
         name: str = next(it).serialize().lower()
         CommandType = RedisCommand._name2command[name]
 
-        return CommandType.from_redis_value(it)
+        return CommandType.from_redis_value_iter(it)
+
+    @classmethod
+    @abstractmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        ...
 
     @abstractmethod
-    async def execute(
+    def execute(
         self, server: "RedisServer", session: "ConnectionSession"
-    ) -> AsyncGenerator[RedisValue, None]: ...
+    ) -> AsyncIterator[RedisValue]: ...
 
     @abstractmethod
     def as_redis_value(self) -> RedisValue: ...
@@ -57,7 +61,7 @@ class RedisCommand(ABC):
 
 
 def write(cls: Type[RedisCommand]) -> Type[RedisCommand]:
-    cls.is_write = True
+    cls.is_write = True 
     return cls
 
 

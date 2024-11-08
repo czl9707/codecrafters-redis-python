@@ -7,6 +7,7 @@ from typing import (
     Generic,
     List,
     Optional,
+    Self,
     Type,
     TypeVar,
     Deque,
@@ -21,7 +22,7 @@ TBase = TypeVar("TBase")
 
 
 class RedisValue(ABC, Generic[TBase]):
-    _symbol2value: Dict[str, Type["RedisValue"]] = {}
+    _symbol2value: Dict[bytes, Type["RedisValue"]] = {}
     _type2value: Dict[type, Type["RedisValue"]] = {}
 
     # child class overwrite these!
@@ -29,12 +30,12 @@ class RedisValue(ABC, Generic[TBase]):
     value_types: List[type] = []
 
     __slots__ = ["tokens", "value"]
-    tokens: Optional[List[bytes]]
-    value: Optional[TBase]
+    tokens: List[bytes]
+    value: TBase
 
     def __init__(self) -> None:
-        self.tokens = None
-        self.value = None
+        self.tokens = None # type: ignore
+        self.value = None # type: ignore
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.serialize()})"
@@ -72,13 +73,13 @@ class RedisValue(ABC, Generic[TBase]):
         return redis_value
 
     @classmethod
-    def from_value(cls, value: TBase) -> "RedisValue":
+    def from_value(cls: Type[Self], value: TBase) -> Self:
         if cls == RedisValue:
             redis_value = RedisValue._from_type(value.__class__)
         else:
             redis_value = cls()
         redis_value.value = value
-        return redis_value
+        return redis_value # type: ignore
 
     def serialize(self) -> TBase:
         if self.value is None:
@@ -118,12 +119,12 @@ class RedisValue(ABC, Generic[TBase]):
 class RedisValueReader:
     def __init__(self, reader: asyncio.StreamReader) -> None:
         self.reader = reader
-        self._deque = deque()
+        self._deque: Deque[bytes] = deque()
 
     def __aiter__(self) -> AsyncIterator[RedisValue]:
         return self
 
-    async def read(self) -> RedisValue:
+    async def read(self) -> RedisValue: # type: ignore
         while not self.reader.at_eof():
             while len(self._deque) and self._deque[0] == EOF:
                 self._deque.popleft()

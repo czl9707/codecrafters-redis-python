@@ -2,10 +2,10 @@ import argparse
 import asyncio
 import pathlib
 
-from .redis_server import MasterServer, ReplicaServer, ServerConfig
+from redis_server import MasterServer, ReplicaServer, ServerConfig, RedisServer
 
 
-async def main():
+async def main() -> None:
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--port", dest="port", default=6379, type=int)
     arg_parser.add_argument("--replicaof", dest="replica_of", default=[], nargs="*")
@@ -23,6 +23,7 @@ async def main():
         "dbfilename": args.dbfilename,
     }
 
+    server: RedisServer
     if args.replica_of:
         server = ReplicaServer(
             ("localhost", args.port),

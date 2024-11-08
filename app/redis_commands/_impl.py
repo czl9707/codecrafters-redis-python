@@ -273,7 +273,7 @@ class ReplConfCommand(RedisCommand):
                 s.append(RedisBulkStrings.from_value("capa"))
                 s.append(RedisBulkStrings.from_value(capa))
         if self.get_ack:
-            s.append(RedisBulkStrings.from_value("getack"))
+            s.append(RedisBulkStrings.from_value("GETACK"))
             s.append(RedisBulkStrings.from_value("*"))
         if self.ack_offset is not None:
             s.append(RedisBulkStrings.from_value("ack"))

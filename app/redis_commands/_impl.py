@@ -752,6 +752,9 @@ class IncrCommand(RedisCommand):
             value = RedisBulkStrings.from_value("1")
         elif isinstance(value, RedisBulkStrings) and value.serialize().isnumeric():
             value = RedisBulkStrings.from_value(str(int(value.serialize()) + 1))
+        else:
+            yield RedisSimpleErrors.from_value("ERR value is not an integer or out of range")
+            return
         
         server.set(self.key, value)
         yield RedisInteger.from_value(int(value.serialize()))

@@ -359,7 +359,7 @@ class WaitCommand(RedisCommand):
             
             return _wait_for_single_replica
                 
-        finished, _ = await wait_for_n_finish(
+        await wait_for_n_finish(
             [
                 _wait_for_single_replica_wrap(replica)
                 for replica in server.registrated_replicas.values()
@@ -367,8 +367,8 @@ class WaitCommand(RedisCommand):
             self.replica_num,
             self.timeout / 1000,
         )
-
-        yield RedisInteger.from_value(len(finished))
+        print([replica.is_synced for replica in server.registrated_replicas.values()])
+        yield RedisInteger.from_value(len([0 for replica in server.registrated_replicas.values() if replica.is_synced]))
 
     def as_redis_value(self) -> RedisValue:
         return RedisArray.from_value(

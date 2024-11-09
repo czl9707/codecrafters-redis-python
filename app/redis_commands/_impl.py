@@ -351,8 +351,8 @@ class WaitCommand(RedisCommand):
                 if replica.is_synced:
                     break
                 
-                await asyncio.sleep(0.01)
-
+                await replica.sync()
+                
         finished, _ = await wait_for_n_finish(
             [
                 _wait_for_single_replia(replica)

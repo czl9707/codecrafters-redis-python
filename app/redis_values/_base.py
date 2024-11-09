@@ -136,7 +136,7 @@ class RedisValueReader:
                 self._deque.extend(request_bytes.split(CRLF))
 
             redis_value = RedisValue.from_bytes(self._deque)
-            print(f"receiving {redis_value.deserialize()}")
+            print(f"receiving {redis_value.deserialize}")
             return redis_value
 
     async def __anext__(self) -> RedisValue:

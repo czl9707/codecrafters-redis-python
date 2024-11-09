@@ -125,28 +125,39 @@ class ReplicaRecord:
     async def read(self) -> RedisValue:
         return await self.reader.read()
 
-    async def heart_beat(self) -> None:
+    async def sync(self) -> None:
         repl_conf_command = ReplConfCommand(get_ack="*")
         repl_conf_command_size = len(repl_conf_command.deserialize())
+
+        await self.write(repl_conf_command.deserialize())
+        ack_response_command = RedisCommand.from_redis_value(
+            await self.read()
+        )
+        assert isinstance(ack_response_command, ReplConfCommand)
+        assert ack_response_command.ack_offset >= self.replication_offset
         
+        self.replication_offset = ack_response_command.ack_offset
+        if (self.expected_offset - self.replication_offset) == repl_conf_command_size:
+            self.is_synced = True
+
+    async def heart_beat(self) -> None:        
         try:
             while True:
-                # place holder for now
-                # await asyncio.sleep(10)
-                await asyncio.sleep(0.1)
-                if self.is_synced:
-                    continue
+                await asyncio.sleep(10)
+                # await asyncio.sleep(0.1)
+                # if self.is_synced:
+                #     continue
                 
-                await self.write(repl_conf_command.deserialize())
-                ack_response_command = RedisCommand.from_redis_value(
-                    await self.read()
-                )
-                assert isinstance(ack_response_command, ReplConfCommand)
-                assert ack_response_command.ack_offset >= self.replication_offset
+                # await self.write(repl_conf_command.deserialize())
+                # ack_response_command = RedisCommand.from_redis_value(
+                #     await self.read()
+                # )
+                # assert isinstance(ack_response_command, ReplConfCommand)
+                # assert ack_response_command.ack_offset >= self.replication_offset
 
-                self.replication_offset = ack_response_command.ack_offset
-                if (self.expected_offset - self.replication_offset) == repl_conf_command_size:
-                    self.is_synced = True
+                # self.replication_offset = ack_response_command.ack_offset
+                # if (self.expected_offset - self.replication_offset) == repl_conf_command_size:
+                #     self.is_synced = True
         except Exception as e:
             print(f"replica closed: {e}")
             self.writer.close()

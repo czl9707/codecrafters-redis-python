@@ -354,7 +354,6 @@ class WaitCommand(RedisCommand):
                     return
                 
                 await replica.sync()
-                print("try sync")
                 while not replica.is_synced and not event.is_set():
                     await asyncio.sleep(0.01)
             
@@ -368,7 +367,7 @@ class WaitCommand(RedisCommand):
             self.replica_num,
             self.timeout / 1000,
         )
-        print([replica.is_synced for replica in server.registrated_replicas.values()])
+
         yield RedisInteger.from_value(len([0 for replica in server.registrated_replicas.values() if replica.is_synced]))
 
     def as_redis_value(self) -> RedisValue:

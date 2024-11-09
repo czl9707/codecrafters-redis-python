@@ -354,6 +354,7 @@ class WaitCommand(RedisCommand):
                     return
                 
                 await replica.sync()
+                print("try sync")
                 while not replica.is_synced and not event.is_set():
                     await asyncio.sleep(0.01)
             

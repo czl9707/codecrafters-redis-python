@@ -128,7 +128,6 @@ class ReplicaRecord:
     async def sync(self) -> None:
         repl_conf_command = ReplConfCommand(get_ack="*")
         await self.write(repl_conf_command.deserialize())
-        print("writing something")
 
     async def heart_beat(self) -> None:        
         repl_conf_command = ReplConfCommand(get_ack="*")
@@ -140,7 +139,6 @@ class ReplicaRecord:
                 )
                 assert isinstance(ack_response_command, ReplConfCommand)
                 assert ack_response_command.ack_offset >= self.replication_offset
-                print("receiving something")
                 
                 self.replication_offset = ack_response_command.ack_offset
                 if (self.expected_offset - self.replication_offset) == repl_conf_command_size:

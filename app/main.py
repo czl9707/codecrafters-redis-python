@@ -8,15 +8,12 @@ from .redis_server import MasterServer, ReplicaServer, ServerConfig, RedisServer
 async def main() -> None:
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--port", dest="port", default=6379, type=int)
-    arg_parser.add_argument("--replicaof", dest="replica_of", default=[], nargs="*")
+    arg_parser.add_argument("--replicaof", dest="replica_of", default=None, type=str)
     arg_parser.add_argument("--dir", dest="dir", default="/tmp/redis-files", nargs="?")
     arg_parser.add_argument(
         "--dbfilename", dest="dbfilename", default="dump.rdb", nargs="?"
     )
     args = arg_parser.parse_args()
-
-    if len(args.replica_of) not in (0, 2):
-        raise Exception("replica of should either have 2 arguments or not been given")
 
     config: ServerConfig = {
         "dir": pathlib.Path(args.dir),
@@ -25,10 +22,12 @@ async def main() -> None:
 
     server: RedisServer
     if args.replica_of:
+        url, port = tuple(arg for arg in args.replica_of.split(" ") if len(arg) > 0)
+        
         server = ReplicaServer(
             ("localhost", args.port),
             config,
-            (args.replica_of[0], int(args.replica_of[1])),
+            (url, int(port)),
         )
     else:
         server = MasterServer(("localhost", args.port), config)

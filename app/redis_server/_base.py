@@ -115,7 +115,6 @@ class ReplicaRecord:
         self.expected_offset = 0
         
         self.is_synced = False
-        self.sync_requested = False
 
     async def write(self, b: bytes):
         self.writer.write(b)
@@ -126,19 +125,15 @@ class ReplicaRecord:
     async def read(self) -> RedisValue:
         return await self.reader.read()
 
+    async def sync(self) -> None:
+        repl_conf_command = ReplConfCommand(get_ack="*")
+        await self.write(repl_conf_command.deserialize())
+
     async def heart_beat(self) -> None:        
         repl_conf_command = ReplConfCommand(get_ack="*")
         repl_conf_command_size = len(repl_conf_command.deserialize())
         try:
             while True:
-                await asyncio.sleep(0.01)
-                if self.is_synced:
-                    self.sync_requested = False
-                    continue
-                if not self.sync_requested:
-                    continue
-                
-                await self.write(repl_conf_command.deserialize())
                 ack_response_command = RedisCommand.from_redis_value(
                     await self.read()
                 )
@@ -148,6 +143,9 @@ class ReplicaRecord:
                 self.replication_offset = ack_response_command.ack_offset
                 if (self.expected_offset - self.replication_offset) == repl_conf_command_size:
                     self.is_synced = True
+                else:
+                    await self.write(repl_conf_command.deserialize())
+                    
         except Exception as e:
             print(f"replica closed: {e}")
             self.writer.close()

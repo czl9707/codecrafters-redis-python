@@ -348,17 +348,20 @@ class WaitCommand(RedisCommand):
     ) -> AsyncIterator[RedisValue]:
         assert server.is_master
 
-        def _wait_for_single_replia_wrap(replica: "ReplicaRecord") -> Callable[[asyncio.Event], Coroutine]:
-            async def _wait_for_single_replia(event: asyncio.Event) -> None:
-                replica.sync_requested = True
+        def _wait_for_single_replica_wrap(replica: "ReplicaRecord") -> Callable[[asyncio.Event], Coroutine]:
+            async def _wait_for_single_replica(event: asyncio.Event) -> None:
+                if replica.is_synced:
+                    return
+                
+                await replica.sync()
                 while not replica.is_synced and not event.is_set():
                     await asyncio.sleep(0.01)
             
-            return _wait_for_single_replia
+            return _wait_for_single_replica
                 
         finished, _ = await wait_for_n_finish(
             [
-                _wait_for_single_replia_wrap(replica)
+                _wait_for_single_replica_wrap(replica)
                 for replica in server.registrated_replicas.values()
             ],
             self.replica_num,

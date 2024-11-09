@@ -272,13 +272,13 @@ class ReplConfCommand(RedisCommand):
             s.append(RedisBulkStrings.from_value(str(self.listening_port)))
         if self.capabilities:
             for capa in self.capabilities:
-                s.append(RedisBulkStrings.from_value("capa"))
+                s.append(RedisBulkStrings.from_value("CAPA"))
                 s.append(RedisBulkStrings.from_value(capa))
         if self.get_ack:
             s.append(RedisBulkStrings.from_value("GETACK"))
             s.append(RedisBulkStrings.from_value("*"))
         if self.ack_offset is not None:
-            s.append(RedisBulkStrings.from_value("ack"))
+            s.append(RedisBulkStrings.from_value("ACK"))
             s.append(RedisBulkStrings.from_value(str(self.ack_offset)))
 
         return RedisArray.from_value(s)

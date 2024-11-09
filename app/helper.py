@@ -1,7 +1,7 @@
 import random
 import string
 import asyncio
-from typing import Tuple, Coroutine
+from typing import Callable, Tuple, Coroutine
 
 
 # helper functions
@@ -12,10 +12,11 @@ def get_random_replication_id() -> str:
 
 
 async def wait_for_n_finish(
-    coros: list[Coroutine], n: int, timeout: int = 0
+    factories: list[Callable[[asyncio.Event], Coroutine]], n: int, timeout: int = 0
 ) -> Tuple[list[asyncio.Task], list[asyncio.Task]]:
-    n = min(len(coros), n)
-    pending = [asyncio.create_task(coro) for coro in coros]
+    n = min(len(factories), n)
+    event = asyncio.Event()
+    pending = [asyncio.create_task(fact(event)) for fact in factories]
     finished: list[asyncio.Task] = []
 
     if n == 0:
@@ -35,8 +36,8 @@ async def wait_for_n_finish(
             break
         await asyncio.sleep(0)  # Give back control
 
+    event.set()
     for task in pending:
-        task.cancel()
-    timeout_task.cancel()
+        await task
 
     return finished, pending

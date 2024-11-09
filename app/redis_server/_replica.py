@@ -145,8 +145,8 @@ class ReplicaServer(RedisServer):
                     await writer.drain()
                 else:
                     await command_queue.put(command)
-
                 self.replica_offset += redis_value.bytes_size
+                print(self.replica_offset)
 
         except Exception as e:
             print(f"lost connection to master: {e}")

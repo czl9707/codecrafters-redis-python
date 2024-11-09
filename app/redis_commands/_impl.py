@@ -2,6 +2,8 @@ import asyncio
 from typing import (
     TYPE_CHECKING,
     AsyncIterator,
+    Callable,
+    Coroutine,
     Iterator,
     Optional,
     Self,
@@ -346,16 +348,16 @@ class WaitCommand(RedisCommand):
     ) -> AsyncIterator[RedisValue]:
         assert server.is_master
 
-        async def _wait_for_single_replia(replica: "ReplicaRecord"):
-            while True:
-                if replica.is_synced:
-                    break
-                
-                await replica.sync()
+        def _wait_for_single_replia_wrap(replica: "ReplicaRecord") -> Callable[[asyncio.Event], Coroutine]:
+            async def _wait_for_single_replia(event: asyncio.Event) -> None:
+                while not replica.is_synced and not event.is_set():
+                    await replica.sync()
+            
+            return _wait_for_single_replia
                 
         finished, _ = await wait_for_n_finish(
             [
-                _wait_for_single_replia(replica)
+                _wait_for_single_replia_wrap(replica)
                 for replica in server.registrated_replicas.values()
             ],
             self.replica_num,

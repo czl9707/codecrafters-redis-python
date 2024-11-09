@@ -144,7 +144,7 @@ class ReplicaRecord:
                 if (self.expected_offset - self.replication_offset) == repl_conf_command_size:
                     self.is_synced = True
                 else:
-                    await self.write(repl_conf_command.deserialize())
+                    await self.sync()
                     
         except Exception as e:
             print(f"replica closed: {e}")

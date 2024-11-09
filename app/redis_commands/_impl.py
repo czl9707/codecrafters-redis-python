@@ -350,8 +350,11 @@ class WaitCommand(RedisCommand):
 
         def _wait_for_single_replia_wrap(replica: "ReplicaRecord") -> Callable[[asyncio.Event], Coroutine]:
             async def _wait_for_single_replia(event: asyncio.Event) -> None:
-                while not replica.is_synced and not event.is_set():
+                while not replica.is_synced:
                     await replica.sync()
+                    # have to try sync once
+                    if event.is_set():
+                        return
             
             return _wait_for_single_replia
                 

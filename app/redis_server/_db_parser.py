@@ -74,7 +74,7 @@ class DatabaseParser:
             case 0b11:
                 return -1
             case _:
-                raise NotImplemented
+                raise NotImplementedError()
 
         return int.from_bytes(b, "little")
 

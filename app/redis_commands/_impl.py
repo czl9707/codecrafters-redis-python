@@ -618,7 +618,7 @@ class XreadCommand(RedisCommand):
         for arg in args:
             match arg.serialize().lower():
                 case "count":
-                    raise NotImplemented
+                    raise NotImplementedError()
                 case "block":
                     block = int(next(args).serialize())
                 case "streams":
@@ -765,4 +765,90 @@ class IncrCommand(RedisCommand):
             self.key,
         ]
 
+        return RedisArray.from_value(s) 
+
+
+class MultiCommand(RedisCommand):
+    name = "MULTI"
+
+    def __init__(
+        self,
+    ) -> None:
+        self.queued_commands: list[RedisCommand] = []
+
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls()
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncIterator[RedisValue]:
+        yield RedisSimpleString.from_value("OK")
+        while True:
+            following_command = RedisCommand.from_redis_value(
+                await session.reader.read()
+            )
+
+            if isinstance(following_command, ExecCommand):
+                results: list[RedisValue] = []
+                for command in self.queued_commands:
+                    async for r in command.execute(server, session):
+                        results.append(r)
+                yield RedisArray.from_value(results)
+                return
+            elif isinstance(following_command, DiscardCommand):
+                yield RedisSimpleString.from_value("OK")
+                return
+            else:
+                self.queued_commands.append(following_command)
+                yield RedisSimpleString.from_value("QUEUED")
+            
+
+
+    def as_redis_value(self) -> RedisValue:
+        s = [RedisBulkStrings.from_value(self.name)]
+        return RedisArray.from_value(s) 
+
+
+class ExecCommand(RedisCommand):
+    name = "EXEC"
+
+    def __init__(
+        self,
+    ) -> None:
+        pass
+    
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls()
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncIterator[RedisValue]:            
+        yield RedisSimpleErrors.from_value("ERR EXEC without MULTI")
+
+    def as_redis_value(self) -> RedisValue:
+        s = [RedisBulkStrings.from_value(self.name)]
+        return RedisArray.from_value(s) 
+
+
+class DiscardCommand(RedisCommand):
+    name = "DISCARD"
+
+    def __init__(
+        self,
+    ) -> None:
+        pass
+    
+    @classmethod
+    def from_redis_value_iter(cls: Type[Self], args: Iterator[RedisBulkStrings]) -> Self:
+        return cls()
+
+    async def execute(
+        self, server: "RedisServer", session: "ConnectionSession"
+    ) -> AsyncIterator[RedisValue]:            
+        yield RedisSimpleErrors.from_value("ERR DISCARD without MULTI")
+
+    def as_redis_value(self) -> RedisValue:
+        s = [RedisBulkStrings.from_value(self.name)]
         return RedisArray.from_value(s) 

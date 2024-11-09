@@ -313,20 +313,20 @@ class RedisStream(
 
     @classmethod
     def _prepare(cls, tokens: Deque[bytes]) -> Never:
-        raise NotImplemented
+        raise NotImplementedError()
 
     @classmethod
     def _serialize(cls, tokens: list[bytes]) -> Never:
-        raise NotImplemented
+        raise NotImplementedError()
 
     @property
     def bytes_size(self) -> int:
         self.value
-        raise NotImplemented
+        raise NotImplementedError()
 
     @classmethod
     def _deserialize(cls, value: str) -> Never:
-        raise NotImplemented
+        raise NotImplementedError()
 
     @property
     def redis_type(self) -> str:
@@ -357,11 +357,11 @@ class RedisStream(
 class RedisRDBFile(RedisValue[str]):
     @classmethod
     def _prepare(cls, tokens: Deque[bytes]) -> list[bytes]:
-        raise NotImplemented
+        raise NotImplementedError()
 
     @classmethod
     def _serialize(cls, tokens: list[bytes]) -> Never:
-        raise NotImplemented
+        raise NotImplementedError()
 
     @property
     def bytes_size(self) -> int:
@@ -386,4 +386,4 @@ class RedisRDBFile(RedisValue[str]):
 
     @property
     def redis_type(self) -> str:
-        raise NotImplemented
+        raise NotImplementedError()
